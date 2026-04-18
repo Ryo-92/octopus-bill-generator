@@ -205,9 +205,26 @@ if submitted:
 
         generate_pdf(tmp_path, data)
 
-        with open(tmp_path, "rb") as f:
-            pdf_bytes = f.read()
+        # ── メタデータ・編集履歴を完全削除 ──────────────────────
+        import pikepdf
+        clean_path = tmp_path + "_clean.pdf"
+        with pikepdf.open(tmp_path) as pdf:
+            # XMP メタデータ（編集履歴・作成ソフト情報など）を全消去
+            # set_pikepdf_as_editor=False で pikepdf 自身の署名も抑止
+            with pdf.open_metadata(set_pikepdf_as_editor=False) as meta:
+                meta.clear()
+            # ドキュメント情報辞書（Author/Creator/Producer 等）を削除
+            if "/Info" in pdf.trailer:
+                del pdf.trailer["/Info"]
+            # XMP ストリーム自体も削除
+            if "/Metadata" in pdf.Root:
+                del pdf.Root["/Metadata"]
+            pdf.save(clean_path)
         os.unlink(tmp_path)
+
+        with open(clean_path, "rb") as f:
+            pdf_bytes = f.read()
+        os.unlink(clean_path)
 
     # ── 結果表示 ────────────────────────────────────────────
     st.success("✅ 生成完了！")
