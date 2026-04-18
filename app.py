@@ -219,7 +219,23 @@ if submitted:
             # XMP ストリーム自体も削除
             if "/Metadata" in pdf.Root:
                 del pdf.Root["/Metadata"]
-            pdf.save(clean_path)
+            # ── 編集保護（閲覧・印刷は自由、編集にはパスワードが必要）──
+            pdf.save(
+                clean_path,
+                encryption=pikepdf.Encryption(
+                    owner=APP_PASSWORD,   # 編集・権限変更に必要なパスワード
+                    user="",              # 閲覧・印刷はパスワード不要
+                    allow=pikepdf.Permissions(
+                        extract=True,           # テキスト抽出・アクセシビリティ許可
+                        print_lowres=True,      # 印刷許可（低解像度）
+                        print_highres=True,     # 印刷許可（高解像度）
+                        modify_annotation=False,  # 注釈編集を禁止
+                        modify_form=False,        # フォーム入力を禁止
+                        modify_other=False,       # その他の編集を禁止
+                        modify_assembly=False,    # ページ操作を禁止
+                    ),
+                ),
+            )
         os.unlink(tmp_path)
 
         with open(clean_path, "rb") as f:
