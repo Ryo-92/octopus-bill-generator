@@ -2492,12 +2492,9 @@ def _register_font():
             kw = {"subfontIndex": 0} if path.lower().endswith(".ttc") else {}
             pdfmetrics.registerFont(TTFont(_FONT_JP, path, **kw))
             _FONT_READY = True
-            print(f"⚠ 代替フォントを使用中: {os.path.basename(path)}
-"
-                  f"  完全一致には IBMPlexSansJP-Regular.ttf を
-"
-                  f"  {_THIS_DIR} に置いてください。
-"
+            print(f"⚠ 代替フォントを使用中: {os.path.basename(path)}\n"
+                  f"  完全一致には IBMPlexSansJP-Regular.ttf を\n"
+                  f"  {_THIS_DIR} に置いてください。\n"
                   f"  入手先: https://fonts.google.com/specimen/IBM+Plex+Sans+JP",
                   file=sys.stderr)
             return
