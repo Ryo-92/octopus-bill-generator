@@ -165,7 +165,9 @@ if submitted:
         kwh = manual_kwh if manual_kwh else get_seasonal_kwh(month)
 
         # 料金計算
-        discount_rate = get_discount_rate(year, month)
+        # 割引単価は「使用月（= 前月）」のレートを使う
+        # 例: 4月請求 → 3月使用分 → get_discount_rate(prev_year, prev_month)
+        discount_rate = get_discount_rate(prev_year, prev_month)
         bill = calculate_bill(kwh, days, discount_rate=discount_rate)
 
         # 前回ご請求金額（前月推定）
