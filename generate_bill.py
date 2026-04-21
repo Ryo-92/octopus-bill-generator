@@ -2420,24 +2420,11 @@ _IBMPLEX_CDN_URLS = [
     "https://unpkg.com/@ibm/plex@6.3.0/IBM-Plex-Sans-JP/fonts/complete/ttf/IBMPlexSansJP-Regular.ttf",
 ]
 
-# IBM Plex Sans JP 候補パス（ツールディレクトリ優先）
-_IBMPLEX_CANDIDATES = [
-    os.path.join(_THIS_DIR, "IBMPlexSansJP-Regular.ttf"),
-    os.path.join(_THIS_DIR, "fonts", "IBMPlexSansJP-Regular.ttf"),
-    os.path.join(tempfile.gettempdir(), "IBMPlexSansJP-Regular.ttf"),
-    "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
-    "/System/Library/Fonts/Hiragino Sans GB.ttc",
-    "/Library/Fonts/Arial Unicode MS.ttf",
-    "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
-    "/usr/share/fonts/truetype/ipafont-gothic/ipag.ttf",
-    "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-    "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
-]
 
 
 def _download_ibmplex_font() -> str | None:
     """CDNからIBM Plex Sans JP Regularをダウンロードしてtmpdirに保存。
-    成功したらパスを返す。失敗したらNoneを返す。"""
+    成功したらパスを返す。失敗したらNoneエ返す。"""
     import urllib.request
     dest = os.path.join(tempfile.gettempdir(), "IBMPlexSansJP-Regular.ttf")
     if os.path.exists(dest) and os.path.getsize(dest) > 100_000:
@@ -2461,25 +2448,24 @@ def _register_font():
     global _FONT_READY
     if _FONT_READY:
         return
-    # First try local files
-    for path in _IBMPLEX_CANDIDATES:
+
+    # ① IBM Plex Sans JP ローカルファイル（ツールディレクトリ・tmpdir）を優先
+    ibmplex_local = [
+        os.path.join(_THIS_DIR, "IBMPlexSansJP-Regular.ttf"),
+        os.path.join(_THIS_DIR, "fonts", "IBMPlexSansJP-Regular.ttf"),
+        os.path.join(tempfile.gettempdir(), "IBMPlexSansJP-Regular.ttf"),
+    ]
+    for path in ibmplex_local:
         if not os.path.exists(path):
             continue
         try:
-            kw = {"subfontIndex": 0} if path.lower().endswith(".ttc") else {}
-            pdfmetrics.registerFont(TTFont(_FONT_JP, path, **kw))
+            pdfmetrics.registerFont(TTFont(_FONT_JP, path))
             _FONT_READY = True
-            is_plex = "IBMPlex" in path or "ibmplex" in path.lower()
-            if not is_plex:
-                print(f"⚠ 代替フォントを使用中: {os.path.basename(path)}\n"
-                      f"  完兩D��致には IBMPlexSansJP-Regular.ttf を\n"
-                      f"  {_THIS_DIR} に置いてください。\n"
-                      f"  入手先: https://fonts.google.com/specimen/IBM+Plex+Sans+JP",
-                      file=sys.stderr)
             return
         except Exception:
             continue
-    # Local file not found — try CDN download
+
+    # ② CDN ダウンロード（ローカルになければネットワーク取得）
     downloaded = _download_ibmplex_font()
     if downloaded:
         try:
@@ -2488,9 +2474,37 @@ def _register_font():
             return
         except Exception as e:
             print(f"⚠ ダウンロードしたフォントの登録失敗: {e}", file=sys.stderr)
+
+    # ③ 最終手段: システムフォント（外見が異なる場合あり）
+    system_fonts = [
+        "/System/Library/Fonts/ヒラギノ角ゴシック W3.ttc",
+        "/System/Library/Fonts/Hiragino Sans GB.ttc",
+        "/Library/Fonts/Arial Unicode MS.ttf",
+        "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
+        "/usr/share/fonts/truetype/ipafont-gothic/ipag.ttf",
+        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+    ]
+    for path in system_fonts:
+        if not os.path.exists(path):
+            continue
+        try:
+            kw = {"subfontIndex": 0} if path.lower().endswith(".ttc") else {}
+            pdfmetrics.registerFont(TTFont(_FONT_JP, path, **kw))
+            _FONT_READY = True
+            print(f"⚠ 代替フォントを使用中: {os.path.basename(path)}
+"
+                  f"  完全一致には IBMPlexSansJP-Regular.ttf を
+"
+                  f"  {_THIS_DIR} に置いてください。
+"
+                  f"  入手先: https://fonts.google.com/specimen/IBM+Plex+Sans+JP",
+                  file=sys.stderr)
+            return
+        except Exception:
+            continue
+
     raise RuntimeError("日本語フォントが見つかりません。")
-
-
 def _make_name_address_overlay(d):
     """
     氏名・住所のみをオーバーレイする最小 PDF。
