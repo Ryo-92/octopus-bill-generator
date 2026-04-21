@@ -402,7 +402,7 @@ if result:
 
     st.success("✅ 生成完了！")
 
-    col_a, col_b", col_c = st.columns(3)
+    col_a, col_b, col_c = st.columns(3)
     col_a.metric("使用量", f"{kwh} kWh")
     col_b.metric("電気料金（税込）", f"{bill['total_inc']:,}円")
     col_c.metric("請求金額（割引後）", f"{bill['final_total']:,}円")
