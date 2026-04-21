@@ -2414,6 +2414,11 @@ TEMPLATE_PDF = _get_template_pdf()
 _FONT_JP    = "JP_OVERLAY"
 _FONT_READY = False
 
+# CDN URLs for IBM Plex Sans JP Regular (tried in order)
+_IBMPLEX_CDN_URLS = [
+    "https://cdn.jsdelivr.net/npm/@ibm/plex@6.3.0/IBM-Plex-Sans-JP/fonts/complete/ttf/IBMPlexSansJP-Regular.ttf",
+    "https://unpkg.com/@ibm/plex@6.3.0/IBM-Plex-Sans-JP/fonts/complete/ttf/IBMPlexSansJP-Regular.ttf",
+]
 
 # IBM Plex Sans JP 候補パス（ツールディレクトリ優先）
 _IBMPLEX_CANDIDATES = [
@@ -2430,10 +2435,33 @@ _IBMPLEX_CANDIDATES = [
 ]
 
 
+def _download_ibmplex_font() -> str | None:
+    """CDNからIBM Plex Sans JP Regularをダウンロードしてtmpdirに保存。
+    成功したらパスを返す。失敗したらNoneを返す。"""
+    import urllib.request
+    dest = os.path.join(tempfile.gettempdir(), "IBMPlexSansJP-Regular.ttf")
+    if os.path.exists(dest) and os.path.getsize(dest) > 100_000:
+        return dest  # already downloaded
+    for url in _IBMPLEX_CDN_URLS:
+        try:
+            print(f"⬇ IBM Plex Sans JP をダウンロード中: {url}", file=sys.stderr)
+            with urllib.request.urlopen(url, timeout=30) as resp:
+                data = resp.read()
+            if len(data) > 100_000:  # sanity check
+                with open(dest, "wb") as f:
+                    f.write(data)
+                print(f"✓ ダウンロード完了: {dest}", file=sys.stderr)
+                return dest
+        except Exception as e:
+            print(f"⚠ ダウンロード失敗 ({url}): {e}", file=sys.stderr)
+    return None
+
+
 def _register_font():
     global _FONT_READY
     if _FONT_READY:
         return
+    # First try local files
     for path in _IBMPLEX_CANDIDATES:
         if not os.path.exists(path):
             continue
@@ -2444,13 +2472,22 @@ def _register_font():
             is_plex = "IBMPlex" in path or "ibmplex" in path.lower()
             if not is_plex:
                 print(f"⚠ 代替フォントを使用中: {os.path.basename(path)}\n"
-                      f"  完全一致には IBMPlexSansJP-Regular.ttf を\n"
+                      f"  完兩D��致には IBMPlexSansJP-Regular.ttf を\n"
                       f"  {_THIS_DIR} に置いてください。\n"
                       f"  入手先: https://fonts.google.com/specimen/IBM+Plex+Sans+JP",
                       file=sys.stderr)
             return
         except Exception:
             continue
+    # Local file not found — try CDN download
+    downloaded = _download_ibmplex_font()
+    if downloaded:
+        try:
+            pdfmetrics.registerFont(TTFont(_FONT_JP, downloaded))
+            _FONT_READY = True
+            return
+        except Exception as e:
+            print(f"⚠ ダウンロードしたフォントの登録失敗: {e}", file=sys.stderr)
     raise RuntimeError("日本語フォントが見つかりません。")
 
 
