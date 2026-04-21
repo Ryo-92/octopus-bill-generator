@@ -134,7 +134,7 @@ def _fetch_subsidy_rate_from_web(year: int, month: int) -> tuple[float | None, s
 
 def get_subsidy_info(usage_year: int, usage_month: int) -> tuple[float, str, str]:
     """
-    T��用月の補助金単価を返す。
+    使用月の補助金単価を返す。
     Returns: (rate, source, status_text)
       source: "table" | "web" | "unknown"
     """
@@ -183,28 +183,47 @@ address = st.text_input(
 
 st.markdown("---")
 
-# ── ② 請求月の選択 ────────────────────────────────────────────
-st.subheader("② 請求月の選択")
+# ── ② 発行日の指定 ────────────────────────────────────────────
+st.subheader("② 発行日の指定")
 
 today = date.today()
-col3, col4 = st.columns(2)
-with col3:
-    year = st.selectbox(
-        "年",
-        options=list(range(today.year - 1, today.year + 2)),
-        index=1,
-    )
-with col4:
-    month = st.selectbox(
-        "月",
-        options=list(range(1, 13)),
-        index=today.month - 1,
-        format_func=lambda m: f"{m}月",
-    )
+issue_date_input = st.date_input(
+    "発行日",
+    value=date(today.year, today.month, 25),
+    help="PDFの右上に表示される発行日です",
+)
 
-# 使用月（= 請求月の前月）
-prev_month = month - 1 if month > 1 else 12
-prev_year  = year if month > 1 else year - 1
+# ── 発行日から請求月・検針期間を自動計算 ──────────────────────
+# ルール：22日以前 → 前月分、23日以降 → 当月分
+issue_date = issue_date_input
+if issue_date.day >= 23:
+    billing_year  = issue_date.year
+    billing_month = issue_date.month
+else:
+    if issue_date.month == 1:
+        billing_year  = issue_date.year - 1
+        billing_month = 12
+    else:
+        billing_year  = issue_date.year
+        billing_month = issue_date.month - 1
+
+# 検針期間（前月23日 〜 請求月22日）
+if billing_month == 1:
+    prev_year  = billing_year - 1
+    prev_month = 12
+else:
+    prev_year  = billing_year
+    prev_month = billing_month - 1
+
+period_end   = date(billing_year, billing_month, 22)
+period_start = date(prev_year, prev_month, 23)
+
+# 計算結果を情報として表示
+st.info(
+    f"📅　**{issue_date.strftime('%Y年%-m月%-d日')}発行**　→　"
+    f"**{billing_year}年{billing_month}月分**の請求書を生成します　"
+    f"（検針期間：{prev_year}年{prev_month}月23日 〜 {billing_year}年{billing_month}月22日）"
+)
 
 st.markdown("---")
 
@@ -226,8 +245,7 @@ elif subsidy_source == "web":
 else:
     st.warning(f"⚠️ {subsidy_status}")
 
-# 単価入力（自動値をデフォルトにしつつ手動修正可能）
-# key に年月を含めることで月変更時にリセットされる
+# 単価入力（発行日変更で請求月が変わった場合にリセットされるよう key に月を含、る）
 discount_rate_input = st.number_input(
     "補助単価（円/kWh）　※手動で修正できます",
     min_value=0.0,
@@ -235,12 +253,12 @@ discount_rate_input = st.number_input(
     value=float(subsidy_rate),
     step=0.1,
     format="%.1f",
-    key=f"disc_rate_{prev_year}_{prev_month}",
+    key=f"disc_rate_{billing_year}_{billing_month}",
     help="政府の激変緩和措置による値引き単価（0.0 = 補助なし）",
 )
 
 # 使用量プレビュー（補助金額を即時表示）
-preview_kwh = get_seasonal_kwh(month)
+preview_kwh = get_seasonal_kwh(billing_month)
 preview_discount = round(preview_kwh * discount_rate_input)
 if discount_rate_input > 0:
     st.caption(
@@ -268,16 +286,6 @@ if not auto_kwh:
 
 st.markdown("---")
 
-# ── ⑤ 発行日の指定 ────────────────────────────────────────────
-st.subheader("⑤ 発行日の指定")
-issue_date_input = st.date_input(
-    "発行日",
-    value=date(today.year, today.month, 25),
-    help="PDFの右上に表示される発行日です",
-)
-
-st.markdown("---")
-
 # ── 生成ボタン ────────────────────────────────────────────────
 generate_clicked = st.button("📄　明細書を生成する", use_container_width=True, type="primary")
 
@@ -298,15 +306,9 @@ if generate_clicked:
         with st.spinner("明細書を生成中…"):
             import random, tempfile, pikepdf
 
-            # 使用期間（前月23日〜当月22日）
-            period_start = date(prev_year, prev_month, 23)
-            period_end   = date(year, month, 22)
             days = (period_end - period_start).days + 1
-
-            issue_date     = issue_date_input
             prev_paid_date = date(prev_year, prev_month, 4)
-
-            kwh = manual_kwh if manual_kwh else get_seasonal_kwh(month)
+            kwh = manual_kwh if manual_kwh else get_seasonal_kwh(billing_month)
 
             # 料金計算（UIで確定した単価を使用）
             bill = calculate_bill(kwh, days, discount_rate=discount_rate_input)
@@ -367,7 +369,7 @@ if generate_clicked:
                             modify_form=False,
                             modify_other=False,
                             modify_assembly=False,
-                        ),
+                       ),
                     ),
                 )
             os.unlink(tmp_path)
@@ -376,13 +378,13 @@ if generate_clicked:
                 pdf_bytes = f.read()
             os.unlink(clean_path)
 
-        # 結果を session_state に保存（月変更後もダウンロードできるよう）
+        # 結果を session_state に��存（発行日変更官もダウンロードできるよう）
         st.session_state["result"] = dict(
             pdf_bytes=pdf_bytes,
             bill=bill,
             kwh=kwh,
-            year=year,
-            month=month,
+            billing_year=billing_year,
+            billing_month=billing_month,
             name=name.strip(),
             contract=contract,
             invoice=invoice,
@@ -392,7 +394,7 @@ if generate_clicked:
         )
 
 
-# ── 結果表示 ──────────────────────────────────────────────────
+# ── 結果誎碑 ──────────────────────────────────────────────────
 result = st.session_state.get("result")
 if result:
     bill = result["bill"]
@@ -400,7 +402,7 @@ if result:
 
     st.success("✅ 生成完了！")
 
-    col_a, col_b, col_c = st.columns(3)
+    col_a, col_b", col_c = st.columns(3)
     col_a.metric("使用量", f"{kwh} kWh")
     col_b.metric("電気料金（税込）", f"{bill['total_inc']:,}円")
     col_c.metric("請求金額（割引後）", f"{bill['final_total']:,}円")
@@ -425,7 +427,7 @@ if result:
         """)
 
     safe_name = result["name"].replace(" ", "_").replace("　", "_")
-    filename  = f"octopus_{result['year']}{result['month']:02d}_{safe_name}.pdf"
+    filename  = f"octopus_{result['billing_year']}{result['billing_month']:02d}_{safe_name}.pdf"
 
     st.download_button(
         label="⬇️　PDFをダウンロード",
