@@ -5,4 +5,4 @@ __pycache__/
 Thumbs.db
 *.pdf
 !template_octopus.pdf
-*.ttf
+!IBMPlexSansJP-Regular.ttf
