@@ -1,6 +1,7 @@
 """
 残高証明書（三菱UFJ銀行形式）生成ツール — Streamlit Web アプリ
 座標はサンプルPDFからpdfminerで実測した値を使用
+フォント: 英字・数字 → Helvetica, 日本語 → IBM Plex Sans JP
 """
 
 import io
@@ -13,7 +14,8 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt（実測 595 × 842）
-_FONT_PATH = os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
+_FONT_JP_PATH = os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
+_FONT_HV_PATH = os.path.join(os.path.dirname(__file__), "helvetica-regular.otf")
 _FONT_REGISTERED = False
 
 APP_TITLE = "残高証明書 生成ツール"
@@ -22,7 +24,8 @@ APP_TITLE = "残高証明書 生成ツール"
 def _setup_font():
     global _FONT_REGISTERED
     if not _FONT_REGISTERED:
-        pdfmetrics.registerFont(TTFont("JP", _FONT_PATH))
+        pdfmetrics.registerFont(TTFont("JP", _FONT_JP_PATH))
+        pdfmetrics.registerFont(TTFont("HV", _FONT_HV_PATH))
         _FONT_REGISTERED = True
 
 
@@ -46,21 +49,25 @@ def generate_pdf(data: dict) -> bytes:
 
 
 def _draw_certificate(c, data: dict):
-    F = "JP"
+    FJ = "JP"   # 日本語・混在テキスト
+    FH = "HV"   # 英字・数字（Helvetica）
 
     # ── 1. ヘッダー ─────────────────────────────────────────────────────────
     # 実測: "残　高　証　明　書" x0=80, y0=803.5, fs=15
     #       "ACCOUNT BALANCE CERTIFICATE" x0=245, y0=803, fs=15
-    c.setFont(F, 15)
+    c.setFont(FJ, 15)
     c.drawString(80, 803, "残　高　証　明　書")
+    c.setFont(FH, 15)
     c.drawString(245, 803, "ACCOUNT BALANCE CERTIFICATE")
 
     # 右上ブロック: x1=524, y0=789 / y0=774, fs=10
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawRightString(524, 789, "同文のもの　１通発行の内第　１号")
+    c.setFont(FH, 10)
     c.drawRightString(524, 774, "This is the 1st copy of 1 duplicate issued.")
 
     # 指定口座 / 1ページ: y0=759
+    c.setFont(FJ, 10)
     c.drawString(75, 759, "指定口座")
     c.drawRightString(524, 759, "１ページ")
 
@@ -70,12 +77,12 @@ def _draw_certificate(c, data: dict):
 
     # ── 2. 発行日（右上） ────────────────────────────────────────────────────
     # 実測: x0=418, x1=520, y0=727, fs=10 → 右端 524 に右揃え
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawRightString(524, 727, _ja_date(data["issue_date"]))
 
     # ── 3. 住所・氏名（左） ──────────────────────────────────────────────────
     # 実測: x=75, 郵便番号 y0=713, 行間15pt, 氏名 y0=653（固定）
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawString(75, 713, data["postal_code"])
 
     addr_y = 698
@@ -95,44 +102,45 @@ def _draw_certificate(c, data: dict):
 
     # ── 5. 証明文（左） ─────────────────────────────────────────────────────
     # 実測: x=85-89, y0=608/594/580（日本語 fs=10）, y0=564/549/534（英語 fs=7）
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawString(89, 608, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
-    c.drawString(85, 594, "下記勘定残高について相違ないことを証明")
+    c.drawString(85, 594, "下記勘定残高について相違なことを証明")
     c.drawString(85, 580, "いたします。")
 
-    c.setFont(F, 7)
+    c.setFont(FH, 7)
     c.drawString(85, 564, "THIS IS TO CERTIFY THAT THE BALANCE OF")
     c.drawString(85, 549, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
     c.drawString(85, 534, "THE AMOUNT(S) INDICATED BELOW.")
 
     # ── 6. 銀行名（右） ─────────────────────────────────────────────────────
     # 実測: Figure bbox (302, 585.75, 472, 600) → x=302, y_baseline≈586
-    c.setFont(F, 22)
+    c.setFont(FJ, 22)
     c.drawString(302, 582, "株式会社 三菱UFJ銀行")
 
     # MUFG Bank, Ltd.  実測: Figure bbox (302, 565.84, 382, 575) → y≈566
-    c.setFont(F, 10)
+    c.setFont(FH, 10)
     c.drawString(302, 564, "MUFG Bank, Ltd.")
 
     # 印鑑（円）: 実測 Figure bbox (478, 562, 524, 607) → 中心(501, 584.5), r≈23
     c.setLineWidth(1.5)
     c.circle(501, 584, 23, stroke=1, fill=0)
-    c.setFont(F, 7)
+    c.setFont(FJ, 7)
     c.drawCentredString(501, 589, "登記印")
+    c.setFont(FH, 7)
     c.drawCentredString(501, 579, "UFJ")
     c.setLineWidth(0.5)
 
     # お取引店・電話: 実測 x=280, y0=533/517
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawString(280, 533, f"お取引店　{data.get('branch', '')}　支店")
     c.drawString(280, 518, f"電　　話　{data.get('phone', '')}")
 
     # ── 7. 残高テーブル ──────────────────────────────────────────────────────
-    _draw_table(c, data, F)
+    _draw_table(c, data, FJ, FH)
 
     # ── 8. フッター ──────────────────────────────────────────────────────────
     # 実測: x=65, y=45/39/33/27, fs=6
-    c.setFont(F, 6)
+    c.setFont(FJ, 6)
     notes = [
         "・この証明書の金額は訂正いたしません。",
         "・金額は、証明日現在の元帳最終残高を表わし決済未確認の証券類を含んでいることがあります。"
@@ -146,7 +154,7 @@ def _draw_certificate(c, data: dict):
         fy -= 6
 
 
-def _draw_table(c, data: dict, F: str):
+def _draw_table(c, data: dict, FJ: str, FH: str):
     """
     残高テーブルを描画する
     座標はサンプルPDFから実測（pdfminer + 目視確認）
@@ -187,28 +195,35 @@ def _draw_table(c, data: dict, F: str):
 
     # ── ヘッダーテキスト ──────────────────────────────────────────────────────
     # 実測: 上段 y0=491 (fs=7), 下段 y0=480 (fs=7/6)
-    c.setFont(F, 7)
+    c.setFont(FJ, 7)
     c.drawString(X1 + 3, 491, "勘定")
+    c.setFont(FH, 7)
     c.drawString(X1 + 3, 480, "ACCOUNT")
+    c.setFont(FJ, 7)
     c.drawString(X2 + 3, 491, "口座番号")
+    c.setFont(FH, 7)
     c.drawString(X2 + 3, 480, "ACCOUNT No.")
+    c.setFont(FJ, 7)
     c.drawString(X3 + 3, 491, "残高")
+    c.setFont(FH, 7)
     c.drawString(X3 + 3, 480, "BALANCE")
+    c.setFont(FJ, 7)
     c.drawString(X4 + 3, 491, "(内決済未確認証券類)")
-    c.setFont(F, 6)
+    c.setFont(FH, 6)
     c.drawString(X4 + 3, 480, "(BILLS OR CHECKS FOR COLLECTION)")
 
     # ── 普通預金行 ────────────────────────────────────────────────────────────
     # 実測: テキスト y0≈444, "普通預金" x0=75, 口座番号 x0=228, 残高 x1=410, ¥0 x1=530
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawString(X1 + 10, 444, "普　通　預　金")
+    c.setFont(FH, 10)
     c.drawString(X2 + 23, 444, data["account_no"])
     c.drawRightString(X4, 444, f'¥{int(data["balance"])}')
     c.drawRightString(X5, 444, "¥0")
 
     # ── 以下余白行 ────────────────────────────────────────────────────────────
     # 実測: y0=414.5 → y≈415
-    c.setFont(F, 10)
+    c.setFont(FJ, 10)
     c.drawCentredString((X1 + X2) / 2, 415, "以下余白")
 
 
@@ -225,7 +240,7 @@ st.subheader("① 宛先情報（左側）")
 
 col_p, col_n = st.columns([1, 1])
 with col_p:
-    postal = st.text_input("郵便番号（全角）", placeholder="例）５２０－０２４６")
+    postal = st.text_input("郵便番号（全角）", placeholder="例５２０－０２４６")
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）安森　瑞穂")
 
@@ -239,7 +254,7 @@ addr2 = st.text_input(
 )
 addr3 = st.text_input(
     "住所③（建物名・部屋番号など）",
-    placeholder="例）ドフルールオオギノサト１０６",
+    placeholder="例）ドフルールオギノサト１０６",
 )
 
 st.markdown("---")
