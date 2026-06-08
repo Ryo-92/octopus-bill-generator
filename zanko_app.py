@@ -1,5 +1,6 @@
 """
 残高証明書（三菱UFJ銀行形式）生成ツール — Streamlit Web アプリ
+座標はサンプルPDFからpdfminerで実測した値を使用
 """
 
 import io
@@ -11,7 +12,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-PAGE_W, PAGE_H = A4  # 595.28 × 841.89 pt
+PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt（実測 595 × 842）
 _FONT_PATH = os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
 _FONT_REGISTERED = False
 
@@ -26,7 +27,7 @@ def _setup_font():
 
 
 def _ja_date(d: date) -> str:
-    """date → 「2024 年 12 月 26 日」形式"""
+    """date → 「2026 年 6 月 5 日」形式"""
     return f"{d.year} 年 {d.month} 月 {d.day} 日"
 
 
@@ -46,270 +47,254 @@ def generate_pdf(data: dict) -> bytes:
 
 def _draw_certificate(c, data: dict):
     F = "JP"
-    L = 30           # 左マージン（pt）
-    R = PAGE_W - 25  # 右端
-    T = PAGE_H - 35  # 上端
 
-    # ── 1. ヘッダー ────────────────────────────────
-    c.setFont(F, 19)
-    c.drawString(L, T, "残　高　証　明　書")
+    # ── 1. ヘッダー ─────────────────────────────────────────────────────────
+    # 実測: "残　高　証　明　書" x0=80, y0=803.5, fs=15
+    #       "ACCOUNT BALANCE CERTIFICATE" x0=245, y0=803, fs=15
+    c.setFont(F, 15)
+    c.drawString(80, 803, "残　高　証　明　書")
+    c.drawString(245, 803, "ACCOUNT BALANCE CERTIFICATE")
 
-    c.setFont(F, 10.5)
-    c.drawString(L + 120, T, "ACCOUNT BALANCE CERTIFICATE")
-
-    c.setFont(F, 7.5)
-    c.drawRightString(R, T + 8,  "同文のもの　１通発行の内第　１号")
-    c.drawRightString(R, T - 2,  "This is the 1st copy of 1 duplicate issued.")
-
-    y_sub = T - 20
-    c.setFont(F, 8.5)
-    c.drawString(L, y_sub, "指定口座")
-    c.drawRightString(R, y_sub, "１ページ")
-
-    c.setLineWidth(0.5)
-    c.line(L, y_sub - 6, R, y_sub - 6)
-
-    # ── 2. 発行日（右上）──────────────────────────
+    # 右上ブロック: x1=524, y0=789 / y0=774, fs=10
     c.setFont(F, 10)
-    c.drawRightString(R, y_sub - 23, _ja_date(data["issue_date"]))
+    c.drawRightString(524, 789, "同文のもの　１通発行の内第　１号")
+    c.drawRightString(524, 774, "This is the 1st copy of 1 duplicate issued.")
 
-    # ── 3. 住所・氏名（左側）─────────────────────
-    ay = y_sub - 42
-    c.setFont(F, 9.5)
-    c.drawString(L + 5, ay, data["postal_code"])
-    for ln in [data["address1"], data.get("address2", ""), data.get("address3", "")]:
+    # 指定口座 / 1ページ: y0=759
+    c.drawString(75, 759, "指定口座")
+    c.drawRightString(524, 759, "１ページ")
+
+    # 区切り線（細）
+    c.setLineWidth(0.5)
+    c.line(75, 752, 524, 752)
+
+    # ── 2. 発行日（右上） ────────────────────────────────────────────────────
+    # 実測: x0=418, x1=520, y0=727, fs=10 → 右端 524 に右揃え
+    c.setFont(F, 10)
+    c.drawRightString(524, 727, _ja_date(data["issue_date"]))
+
+    # ── 3. 住所・氏名（左） ──────────────────────────────────────────────────
+    # 実測: x=75, 郵便番号 y0=713, 行間15pt, 氏名 y0=653（固定）
+    c.setFont(F, 10)
+    c.drawString(75, 713, data["postal_code"])
+
+    addr_y = 698
+    for ln in [data.get("address1", ""), data.get("address2", ""), data.get("address3", "")]:
         if ln and ln.strip():
-            ay -= 15
-            c.drawString(L + 5, ay, ln.strip())
-    ay -= 15
-    c.drawString(L + 5, ay, data["name"] + "　様")
+            c.drawString(75, addr_y, ln.strip())
+        addr_y -= 15  # 空行も送る（書式上の固定レイアウト）
 
-    # ── 4. 区切り線（太）─────────────────────────
-    sep_y = T - 140
-    c.setLineWidth(1.2)
-    c.line(L, sep_y, R, sep_y)
+    # 氏名は y=653 に固定（書式通り）
+    c.drawString(75, 653, data["name"] + "　様")
+
+    # ── 4. 太い区切り線 ──────────────────────────────────────────────────────
+    # 実測: y=637, x0=75, x1=495
+    c.setLineWidth(1.5)
+    c.line(75, 637, 495, 637)
     c.setLineWidth(0.5)
 
-    # ── 5. 証明文（左）＋ 銀行名（右）───────────
-    mid = PAGE_W / 2 + 15
-    ct_y = sep_y - 19
-
-    # 証明文（日本語）
-    c.setFont(F, 9.5)
-    for ln in [
-        f"　{_ja_date(data['cert_date'])}現在の貴方ご名義",
-        "下記勘定残高について相違ないことを証明",
-        "いたします。",
-    ]:
-        c.drawString(L + 5, ct_y, ln)
-        ct_y -= 15
-
-    ct_y -= 4
-    c.setFont(F, 7.5)
-    for ln in [
-        "THIS IS TO CERTIFY THAT THE BALANCE OF",
-        "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)",
-        "THE AMOUNT(S) INDICATED BELOW.",
-    ]:
-        c.drawString(L + 5, ct_y, ln)
-        ct_y -= 11
-
-    # 銀行名（右）
-    bank_y = sep_y - 22
-    c.setFont(F, 19)
-    c.drawString(mid, bank_y, "株式会社 三菱UFJ銀行")
+    # ── 5. 証明文（左） ─────────────────────────────────────────────────────
+    # 実測: x=85-89, y0=608/594/580（日本語 fs=10）, y0=564/549/534（英語 fs=7）
     c.setFont(F, 10)
-    c.drawString(mid, bank_y - 22, "MUFG Bank, Ltd.")
+    c.drawString(89, 608, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
+    c.drawString(85, 594, "下記勘定残高について相違ないことを証明")
+    c.drawString(85, 580, "いたします。")
 
-    # 印鑑（円で代替）
-    sx, sy = R - 22, bank_y - 15
-    c.setLineWidth(2)
-    c.circle(sx, sy, 20, stroke=1, fill=0)
     c.setFont(F, 7)
-    c.drawCentredString(sx, sy + 3,  "登記印")
-    c.drawCentredString(sx, sy - 6,  "UFJ")
+    c.drawString(85, 564, "THIS IS TO CERTIFY THAT THE BALANCE OF")
+    c.drawString(85, 549, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
+    c.drawString(85, 534, "THE AMOUNT(S) INDICATED BELOW.")
+
+    # ── 6. 銀行名（右�! ─────────────────────────────────────────────────────
+    # 実測: Figure bbox (302, 585.75, 472, 600) → x=302, y_baseline≈586
+    c.setFont(F, 22)
+    c.drawString(302, 582, "株式会社 三菱UFJ銀行")
+
+    # MUFG Bank, Ltd.  実測: Figure bbox (302, 565.84, 382, 575) → y≈566
+    c.setFont(F, 10)
+    c.drawString(302, 564, "MUFG Bank, Ltd.")
+
+    # 印鑑（円）: 実測 Figure bbox (478, 562, 524, 607) → 中心(501, 584.5), r≈23
+    c.setLineWidth(1.5)
+    c.circle(501, 584, 23, stroke=1, fill=0)
+    c.setFont(F, 7)
+    c.drawCentredString(501, 589, "登記印")
+    c.drawCentredString(501, 579, "UFJ")
     c.setLineWidth(0.5)
 
-    # お取引店・電話
-    br_y = bank_y - 52
-    c.setFont(F, 9.5)
-    c.drawString(mid, br_y,       f'お取引店　{data.get("branch", "亀有")}　支店')
-    c.drawString(mid, br_y - 14,  f'電　　話　{data.get("phone", "03(3601)4151")}')
+    # お取引店・電話: 実測 x=280, y0=533/517
+    c.setFont(F, 10)
+    c.drawString(280, 533, f"お取引店　{data.get('branch', '')}　支店")
+    c.drawString(280, 518, f"電　　話　{data.get('phone', '')}")
 
-    # ── 6. 残高テーブル──────────────────────────
-    _draw_table(c, data, F, L, R, sep_y - 118)
+    # ── 7. 残高テーブル ──────────────────────────────────────────────────────
+    _draw_table(c, data, F)
 
-    # ── 7. フッター注意事項─────────────────────
-    fy = 72
-    c.setFont(F, 5.5)
-    for note in [
+    # ── 8. フッター ──────────────────────────────────────────────────────────
+    # 実測: x=65, y=45/39/33/27, fs=6
+    c.setFont(F, 6)
+    notes = [
         "・この証明書の金額は訂正いたしません。",
         "・金額は、証明日現在の元帳最終残高を表わし決済未確認の証券類を含んでいることがあります。"
         "この場合はその金額を｢(内決済未確認証券類)｣に表示します。",
         "・｢当座貸越(総合)｣には、普通預金貸越型のカードローンご利用額も含まれます。",
-        "・口座番号欄は、口座指定のご依頼の場合のみ表示します。",
-    ]:
-        c.drawString(L, fy, note)
-        fy -= 8
+        "・口座番号欄は、口座指定のご依頼さ場合のみ表示します。",
+    ]
+    fy = 45
+    for note in notes:
+        c.drawString(65, fy, note)
+        fy -= 6
 
 
-def _draw_table(c, data: dict, F: str, L: float, R: float, top: float):
-    """残高テーブルを描画する"""
-    TW = R - L
+def _draw_table(c, data: dict, F: str):
+    """
+    残高テーブルを描画する
+    座標はサンプルPDFから実測（pdfminer + 目視確認）
+    """
+    # ── 列境界（x 座標）──────────────────────────────────────────────────────
+    # 実測: X1=65, X2=205, X3=290, X4=410, X5=530
+    X1, X2, X3, X4, X5 = 65, 205, 290, 410, 530
+    TW = X5 - X1  # = 465
 
-    # 列境界（x 座標）
-    X1 = L
-    X2 = L + int(TW * 0.330)   # 口座番号
-    X3 = L + int(TW * 0.490)   # 残高（桁グリッド付き）
-    X4 = L + int(TW * 0.730)   # 内決済未確認（桁グリッド付き）
-    X5 = R
+    # ── 行の y 座標 ──────────────────────────────────────────────────────────
+    top_y   = 502   # テーブル上端（ヘッダー上）
+    hdr_bot = 472   # ヘッダー下端 / データ行上端
+    bot_y   = 52    # テーブル下端
+    ROW_H   = 30    # 全行の高さ（ヘッダー含む）
 
-    HDR_H = 30   # ヘッダー行高さ
-    ROW_H = 30   # データ行高さ
-    EM_H  = 26   # 空行高さ
+    # ── 外枠 ─────────────────────────────────────────────────────────────────
+    c.setDash([])
+    c.setLineWidth(0.5)
+    c.rect(X1, bot_y, TW, top_y - bot_y)
 
-    def draw_row(y_top, h):
-        """行枠と縦区切り線を描か（金額列は点線グリッド付き）"""
-        c.setDash([])
-        c.setLineWidth(0.5)
-        c.rect(X1, y_top - h, TW, h)
-        for cx in [X2, X3, X4]:
-            c.line(cx, y_top - h, cx, y_top)
-        # 残高列 桁グリッド（点線）
-        dw3 = (X4 - X3) / 10
-        c.setDash([1, 2])
-        for i in range(1, 10):
-            c.line(X3 + i * dw3, y_top - h, X3 + i * dw3, y_top)
-        # 内決済列 桁グリッド（点線）
-        dw4 = (X5 - X4) / 8
-        for i in range(1, 8):
-            c.line(X4 + i * dw4, y_top - h, X4 + i * dw4, y_top)
-        c.setDash([])
+    # ── 縦区切り線（実線、テーブル全高�! ─────────────────────────────────────
+    for cx in [X2, X3, X4]:
+        c.line(cx, bot_y, cx, top_y)
 
-    # ── ヘッダー行
-    y = top
-    draw_row(y, HDR_H)
-    c.setFont(F, 8)
-    c.drawString(X1 + 3, y - 11, "勘定")
-    c.drawString(X1 + 3, y - 21, "ACCOUNT")
-    c.drawString(X2 + 3, y - 11, "口座番号")
-    c.drawString(X2 + 3, y - 21, "ACCOUNT No.")
-    c.drawString(X3 + 3, y - 11, "残高")
-    c.drawString(X3 + 3, y - 21, "BALANCE")
-    c.setFont(F, 6)
-    c.drawString(X4 + 3, y - 10, "(内決済未確認証券類)")
-    c.drawString(X4 + 3, y - 19, "(BILLS OR CHECKS FOR COLLECTION)")
+    # ── 残高・内決済 桁グリッド（点線、データ行のみ hdr_bot → bot_y）─────────
+    # 実測: 各列に5�+8�k��y��
+8સ��x��������ˍK
 
-    # ── 普通預金行
-    y -= HDR_H
-    draw_row(y, ROW_H)
-    c.setFont(F, 11)
-    c.drawString(X1 + 5, y - 20, "普　通　預　金")
-    c.setFont(F, 10)
-    c.drawString(X2 + 5, y - 20, data["account_no"])
-    c.drawRightString(X4 - 6,  y - 20, f'¥{int(data["balance"]):,}')
-    c.drawRightString(X5 - 6,  y - 20, "¥0")
+K�K
+��K��KLK�JB�˜�]\�
+�K�JB��܈[�̍ˍK
 
-    # ── 以下余白行
-    y -= ROW_H
-    draw_row(y, ROW_H)
-    c.setFont(F, 10)
-    c.drawCentredString((X1 + X2) / 2, y - 20, "以下余白")
-
-    # ── 空行（ページ下部まで埋める）
-    n_empty = max(int((y - 88) / EM_H) - 1, 4)
-    for _ in range(n_empty):
-        y -= EM_H
-        if y - EM_H < 88:
-            break
-        draw_row(y, EM_H)
+K�K
+��K��KLK�WN��˛[�J�
+����K�
+��؛�
+B�˛[�J
+
+����K
+
+��؛�
+B�˜�]\�
+�JB���8� 8� 9�-9nl�c.�b!�ࢹ���"8��8�����8��9."�����b��L�9���"H8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� �HH�؛���[HH����N��˛[�JKK
+KJB�HOH�������8� 8� 8��8�����8��8���x�x��8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ��9k���+�9."���HLMLH
+��M�K9."���HLM
+��M�͊B�˜�]�۝
+�
+�B�˙�]���[��H
+��
+LK�b�9k���B�˙�]���[��H
+��
+�P���S��B�˙�]���[���
+��
+LK�c��n���j�c�ȊB�˙�]���[���
+��
+�P���S��ˈ�B�˙�]���[���
+��
+LK����j��B�˙�]���[���
+��
+��SS��H�B�˙�]���[��
+
+��
+LK�9a�y�n��"9�*�论*�z*/9b.:hg�H�B�˜�]�۝
+�
+�B�˙�]���[��
+
+��
+��S�Ԉ�P����Ԉ��P�SӊH�B���8� 8� 9�k�`&�h$:a�z(c8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ��9k���+�8���x�x��L8�b
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Streamlit UI
-# ══════════════════════════════════════════════════════════════════════════════
+��k�`&�h$:a�H�M�K9c��n���j�c��L��9���j�OML0�LOML��˜�]�۝
+�L
+B�˙�]���[��H
+�L
 
-st.title("🏦 " + APP_TITLE)
-st.caption("三菱UFJ銀行形式の残高証明書PDFを生成します")
-st.markdown("---")
 
-# ── ① 宛先情報（左側）────────────────────────────────────────────────────
-st.subheader("① 宛先情報（左側）")
+��k�� :`&�� :h$8� :a�H�B�˙�]���[���
+���
 
-col_p, col_n = st.columns([1, 1])
-with col_p:
-    postal = st.text_input("郵便番号", placeholder="例）963-8041")
-with col_n:
-    name = st.text_input("氏名（フルネーム）", placeholder="例）田中　拓郎")
 
-addr1 = st.text_input(
-    "住所①（都道府県・市区町村）",
-    placeholder="例）福島県　郡山市",
-)
-addr2 = st.text_input(
-    "住所②（番地・建物名など）",
-    placeholder="例）富田町 52-1 スターハイツ E-1",
-)
+]VȘX���[�ۛȗJB�˙�]ԚY���[��
+
 
-st.markdown("---")
 
-# ── ② 発行日（右上）──────────────────────────────────────────────────────
-st.subheader("② 発行日（右上）")
-today = date.today()
-issue_date = st.date_input("発行日", value=today)
+��^�[�
+]VȘ�[[��H�J_I�B�˙�]ԚY���[��
+K
 
-st.markdown("---")
 
-# ── ③ 証明内容（中央）────────────────────────────────────────────────────
-st.subheader("③ 証明内容（中央）")
-cert_date = st.date_input("証明日（残高の基準日）", value=today)
+��L�B���8� 8� 9.�y."�/fy�oz(c8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ��9k���+�LMM�H8���x�b
+MB�˜�]�۝
+�L
+B�˙�]��[��Y��[��
+H
+��H��
+MK�.�y."�/fy�oH�B����8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d����X[[]RB��8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d8�d����]J�'���
+�T�UJB����\[ۊ�."z#�UQ��b�:(c9oh�o#��k����j�:*/9�#����ह�'��$8�e��o��fH�B���X\���ۊ�KKH�B���8� 8� 8�h9k��ab9��yh,{�"9m�`m;�"x� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ����X�XY\���h9k��ab9��yh,{�"9m�`m;�"H�B�������ۈH����[[���KWJB��]�������[H��^�[�]
+�`�y/���j�c���"9aj:)��"H�X�Z�\�H�/���"{�%{�$��$;�#{�$;�$��%;�%��B��]��ێ���[YHH��^�[�]
+��#�d#{�"8��x�����x��8��;�"H�X�Z�\�H�/���"yk�y��� 9�g��`��B��Y�HH��^�[�]
+��/c��`8�h;�":`�z`d�n�9�#8���n �c.��.��d{�"H��X�Z�\�H�/���"y���,�9�#8� 9i)��)yn ���B�Y��H��^�[�]
+��/c��`8�h{�"9�j�g,;�"H��X�Z�\�H�/���"xસસ૸���x��8� 8� ;�$��%;�$��#{�${�%�� 8�������ȋ�B�Y��H��^�[�]
+��/c��`8�h��"9n��jyd#x���`�9lb��j�c���j��j{�"H��X�Z�\�H�/���"x��x��x�����8���સસ૸���x��;�${�$;�%���B����X\���ۊ�KKH�B���8� 8� 8�hH9�n�(c9��{�"9c��."��"x� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ����X�XY\���hH9�n�(c9��{�"9c��."��"H�B��^HH]K��^J
+B�\��YW�]HH��]W�[�]
+��n�(c9��H��[YO]�^JB����X\���ۊ�KKH�B���8� 8� 8�h�:*/9�#�a�yk�{�"9.+yi+��"x� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ����X�XY\���h�:*/9�#�a�yk�{�"9.+yi+��"H�B��\��]HH��]W�[�]
+�*/9�#���{�"9���j�8�k�g����{�"H��[YO]�^JB�����K��؈H����[[���KWJB��]���N��X��ۛ�H��^�[�]
+�c��n���j�c�ȋX�Z�\�H�/���"L��L
+�H�B��]��؎���[[��HH���[X�\��[�]
+����j�;�"9a���"H�Z[�ݘ[YOL�[YOL�\LL�ܛX]H�Y�B����X\���ۊ�KKH�B���8� 8� 8�h�8�b�c�o%yn����yh,H8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� ����X�XY\���h�8�b�c�o%yn����yh,{�"9c��`m;�"H�B���؜����H����[[���KWJB��]��؜�����[��H��^�[�]
+��+�n��d#H�X�Z�\�H�/���"z#by�)H�B��]�����ۙHH��^�[�]
+�f��*ly�j�c�ȋX�Z�\�H�/���"L
+��
+M��NLH�B����X\���ۊ�KKH�B���8� 8� 9�'��$8��8������ 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� 8� �Y����]ۊ�'��8� 9���j�:*/9�#����ह�'��$8�fx�ȋ\�W��۝Z[�\���YU�YK\OH��[X\�H�N��\���H�B�Y�����[���\
 
-col_a, col_b = st.columns([1, 1])
-with col_a:
-    acct_no = st.text_input("口座番号", placeholder="例）0379501")
-with col_b:
-    balance = st.number_input("残高（円）", min_value=0, value=0, step=1000, format="%d")
+N�\��˘\[�
+�`�y/���j�c��हaiyb���e��i��c��h8�ex�a8� ��B�Y����[YK���\
 
-st.markdown("---")
+N�\��˘\[�
+��#�d#xहaiyb���e��i��c��h8�ex�a8� ��B�Y���Y�K���\
 
-# ── 生成ボタン─────────────────────────────────────────────────────────────
-if st.button("📄　残高証明書PDFり生成する", use_container_width=True, type="primary"):
-    errs = []
-    if not postal.strip():   errs.append("郵便番号を入力してください。")
-    if not name.strip():     errs.append("氏名を入力してください。")
-    if not addr1.strip():    errs.append("住所①を入力してください。")
-    if not acct_no.strip():  errs.append("口座番号を入力してください。")
-    for e in errs:
-        st.error(e)
+N�\��˘\[�
+�/c��`8�h8हaiyb���e��i��c��h8�ex�a8� ��B�Y���X��ۛ˜��\
 
-    if not errs:
-        with st.spinner("PDFを生成中…"):
-            pdf_bytes = generate_pdf(dict(
-                postal_code=postal.strip(),
-                address1=addr1.strip(),
-                address2=addr2.strip(),
-                name=name.strip(),
-                issue_date=issue_date,
-                cert_date=cert_date,
-                account_no=acct_no.strip(),
-                balance=int(balance),
-            ))
+N�\��˘\[�
+�c��n���j�c��हaiyb���e��i��c��h8�ex�a8� ��B��܈H[�\��΂���\��܊JB��Y���\��΂��]���[��\���ह�'��$9.+x�)��N���؞]\�H�[�\�]W��X�
+���[���O\��[���\
 
-        st.success("✅ 生成完了！")
+K�Y�\��OXY�K���\
 
-        # 結果メトリクス
-        mc1, mc2, mc3 = st.columns(3)
-        mc1.metric("氏名", name.strip())
-        mc2.metric("口座番号", acct_no.strip())
-        mc3.metric("残高", f"¥{int(balance):,}")
+K�Y�\�̏XY�����\
 
-        # ダウンロード
-        safe = name.strip().replace(" ", "_").replace("　", "_")
-        fname = f"zanko_{issue_date.strftime('%Y%m%d')}_{safe}.pdf"
-        st.download_button(
-            "⬇️　PDFをダウンロード",
-            data=pdf_bytes,
-            file_name=fname,
-            mime="application/pdf",
-            use_container_width=True,
-        )
+K�Y�\���XY�˜��\
+
+K��[YO[�[YK���\
+
+K�\��YW�]OZ\��YW�]K��\��]OX�\��]K�X���[�ۛ�XX��ۛ˜��\
+
+K��[[��OZ[�
+�[[��JK���[��X��[�����\
+
+K�ۙO\ۙK���\
+
+K�
+JB�����X��\����!H9�'��$9k�9.��� H�B��X�KX̋X��H����[[���B�X�K�Y]�X���#�d#H��[YK���\
+
+JB�X̋�Y]�X��c��n���j�c�ȋX��ۛ˜��\
+
+JB�X�˛Y]�X�����j�����^�[�
+�[[��J_H�B���Y�HH�[YK���\
+
+K��\X�J���ȊK��\X�J�� ��ȊB���[YHH���[�����\��YW�]K����[YJ	�VI[IY	�_W���Y�_K�������ۛ�Y؝]ۊ���!��#�� �स��8੸�����x��8��H��]O\�؞]\���[Wۘ[YOY��[YK�Z[YOH�\X�][ۋ����\�W��۝Z[�\���YU�YK�
+B
