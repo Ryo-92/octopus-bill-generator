@@ -1,7 +1,8 @@
 """
 残高証明書（三菱UFJ銀行形式）生成ツール — Streamlit Web アプリ
 座標はサンプルPDFからpdfminerで実測した値を使用
-フォント: 英字・数字 → Helvetica, 日本語 → IPAexMincho
+フォント: 全テキスト → IPAexMincho（原本通り）
+線幅: 全線 0.25pt（原本通り）
 """
 
 import glob as _glob
@@ -15,7 +16,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt（実測 595 × 842）
+PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt
 
 
 def _find_font_jp() -> str:
@@ -28,12 +29,11 @@ def _find_font_jp() -> str:
         hits = sorted(_glob.glob(pattern, recursive=True))
         if hits:
             return hits[0]
-    # フォールバック: IBMPlexSansJP（ローカロ開発用）
+    # フォールバック: IBMPlexSansJP（ローカル開発用）
     return os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
 
 
 _FONT_JP_PATH = _find_font_jp()
-# Helvetica は ReportLab 内蔵フォントのため登録不要
 _FONT_REGISTERED = False
 
 APP_TITLE = "残高証明書 生成ツール"
@@ -43,13 +43,14 @@ def _setup_font():
     global _FONT_REGISTERED
     if not _FONT_REGISTERED:
         pdfmetrics.registerFont(TTFont("JP", _FONT_JP_PATH))
-        # Helvetica は ReportLab 内蔵フォント（登録不要）
         _FONT_REGISTERED = True
 
 
 def _ja_date(d: date) -> str:
-    """date → 「2026 年 6 月 5 日」形式"""
-    return f"{d.year} 年 {d.month} 月 {d.day} 日"
+    """date → 「2026 年  6 月  5 日」形式（1桁の月・日は先頭スペースで2桁幅）"""
+    m   = f" {d.month}" if d.month < 10 else str(d.month)
+    day = f" {d.day}"   if d.day   < 10 else str(d.day)
+    return f"{d.year} 年 {m} 月 {day} 日"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -67,119 +68,121 @@ def generate_pdf(data: dict) -> bytes:
 
 
 def _draw_certificate(c, data: dict):
-    FJ = "JP"          # 日本語・混在テキスト
-    FH = "Helvetica"   # 英字・数字（ReportLab 内蔵）
+    FJ = "JP"   # IPAexMincho — 原本は全テキストこのフォント
+
+    # デフォルト線幅（原本: 全線 0.25）
+    c.setLineWidth(0.25)
 
     # ── 1. ヘッダー ─────────────────────────────────────────────────────────
-    # 実測: "残　高　証　明　書" x0=80, y0=803.5, fs=15
-    #       "ACCOUNT BALANCE CERTIFICATE" x0=245, y0=803, fs=15
-    c.setLineWidth(0.3)
-    c.setFont(FJ, 15)
+    # 原本実測: "残　高　証　明　書" x=80, y=803.5, size=15
     _t = c.beginText(80, 803)
     _t.setFont(FJ, 15)
-    _t.setTextRenderMode(2)
+    _t.setTextRenderMode(2)  # 塗り+輪郭 → 疑似ボールド（原本タイトル太字）
     _t.textLine("残　高　証　明　書")
     c.drawText(_t)
-    c.setLineWidth(0.5)
-    c.setFont(FH, 15)
+
+    # 原本実測: "ACCOUNT BALANCE CERTIFICATE" x=245, y=803, size=15
+    c.setFont(FJ, 15)
     c.drawString(245, 803, "ACCOUNT BALANCE CERTIFICATE")
 
-    # 右上ブロック: x1=524, y0=789 / y0=774, fs=10
+    # 原本実測: "同文のもの..." x=364, y=789.5, size=10
     c.setFont(FJ, 10)
-    c.drawRightString(524, 789, "同文のもの　１通発行の内第　１号")
-    c.setFont(FH, 10)
-    c.drawRightString(524, 774, "This is the 1st copy of 1 duplicate issued.")
+    c.drawString(364, 789, "同文のもの　１通発行の内第　１号")
 
-    # 指定口座 / 1ページ: y0=759
-    c.setFont(FJ, 10)
+    # 原本実測: "This is the 1st copy..." x=329.03, y=774.5, size=10
+    c.drawString(329, 774, "This is the 1st copy of 1 duplicate issued.")
+
+    # 原本実測: "指定口座" x=75, y=759.5, size=10
     c.drawString(75, 759, "指定口座")
-    c.drawRightString(524, 759, "１ページ")
 
-    # 区切り線（細）
-    c.setLineWidth(0.5)
-    c.line(75, 752, 524, 752)
+    # 原本実測: "1 ぺージ" x=479.12, y=759.5, size=10
+    c.drawString(479, 759, "1 ページ")
 
-    # ── 2. 発行日（右上） ────────────────────────────────────────────────────
-    # 実測: x0=418, x1=520, y0=727, fs=10 → 右端 524 に右揃え
-    c.setFont(FJ, 10)
-    c.drawRightString(524, 727, _ja_date(data["issue_date"]))
+    # ── 2. 発行日（右側）────────────────────────────────────────────────────
+    # 原本実測: x=418.28, y=729.5, size=10
+    c.drawString(418, 729, _ja_date(data["issue_date"]))
 
-    # ── 3. 住所・氏名（左） ──────────────────────────────────────────────────
-    # 実測: x=75, 郵便番号 y0=713, 行間15pt, 氏名 y0=653（固定）
-    c.setFont(FJ, 10)
+    # ── 3. 住所・氏名（左）──────────────────────────────────────────────────
+    # 原本実測: 郵便番号 x=75, y=713.43, size=10, 行間 15pt
     c.drawString(75, 713, data["postal_code"])
 
     addr_y = 698
     for ln in [data.get("address1", ""), data.get("address2", ""), data.get("address3", "")]:
         if ln and ln.strip():
             c.drawString(75, addr_y, ln.strip())
-        addr_y -= 15  # 空行も送る（書式上の固定レイアウト）
+        addr_y -= 15  # 空行でも行送り（書式固定レイアウト）
 
-    # 氏名は y=653 に固定（書式通り）
+    # 原本実測: 氏名 x=75, y=653.43（アドレス行数に関わらず固定）
     c.drawString(75, 653, data["name"] + "　様")
 
-    # ── 4. 太い区切り線 ──────────────────────────────────────────────────────
-    # 実測: y=637, x0=75, x1=495
-    c.setLineWidth(1.5)
+    # ── 4. 区切り線 ──────────────────────────────────────────────────────────
+    # 原本実測: (75,637)→(495,637), lw=0.25
+    c.setLineWidth(0.25)
     c.line(75, 637, 495, 637)
-    c.setLineWidth(0.5)
 
-    # ── 5. 証明文（左） ─────────────────────────────────────────────────────
-    # 実測: x=85-89, y0=608/594/580（日本語 fs=10）, y0=564/549/534（英語 fs=7）
+    # ── 5. 証明文（左）──────────────────────────────────────────────────────
+    # 原本実測: x=89.28, y=610.02, size=10
     c.setFont(FJ, 10)
-    c.drawString(89, 608, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
+    c.drawString(89, 610, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
+
+    # 原本実測: x=85, y=594.76
     c.drawString(85, 594, "下記勘定残高について相違ないことを証明")
+
+    # 原本実測: x=85, y=580.02
     c.drawString(85, 580, "いたします。")
 
-    c.setFont(FH, 7)
+    # 英語証明文: x=85, y=564.42/549.42/534.42, size=7
+    c.setFont(FJ, 7)
     c.drawString(85, 564, "THIS IS TO CERTIFY THAT THE BALANCE OF")
     c.drawString(85, 549, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
     c.drawString(85, 534, "THE AMOUNT(S) INDICATED BELOW.")
 
-    # ── 6. 銀行名（右） ─────────────────────────────────────────────────────
-    # 実測: Figure bbox (302, 585.75, 472, 600) → x=302, y_baseline≈586
-    # 太字効果: テキスト描画モード2（塗り+輪郭）で太く見せる
-    c.setLineWidth(0.4)
-    c.setFont(FJ, 22)
-    _t = c.beginText(302, 582)
-    _t.setFont(FJ, 22)
-    _t.setTextRenderMode(2)   # fill + stroke → 疑似ボールド
+    # ── 6. 銀行名（右）──────────────────────────────────────────────────────
+    # 原本 LTFigure bbox=(302,585.8,472,600) → 幅170pt, 高14.2pt → size≈16
+    c.setLineWidth(0.35)
+    _t = c.beginText(302, 586)
+    _t.setFont(FJ, 17)
+    _t.setTextRenderMode(2)   # 塗り+輪郭 → 疑似ボールド
     _t.textLine("株式会社 三菱UFJ銀行")
     c.drawText(_t)
-    c.setLineWidth(0.5)
+    c.setLineWidth(0.25)
 
-    # MUFG Bank, Ltd.  実測: Figure bbox (302, 565.84, 382, 575) → y≈566
-    c.setFont(FH, 10)
+    # 原本 LTFigure bbox=(302,565.8,382,575) → "MUFG Bank, Ltd." x=302, y≈566
+    c.setFont(FJ, 10)
     c.drawString(302, 564, "MUFG Bank, Ltd.")
 
     # ── 印鑑（赤い公印）─────────────────────────────────────────────────────
-    # 実測 Figure bbox (478, 562, 524, 607) → 中心(501, 584.5), r≈23
-    SEAL_RED = (0.72, 0.08, 0.08)   # MUFG系の深い赤
+    # 原本 LTFigure bbox=(478,562,524,607) → 中心(501,584.5), r≈22
+    SEAL_RED = (0.72, 0.08, 0.08)
     c.setStrokeColorRGB(*SEAL_RED)
     c.setFillColorRGB(*SEAL_RED)
     c.setLineWidth(1.5)
-    c.circle(501, 584, 22, stroke=1, fill=0)   # 一重円（原本通り）
+    c.circle(501, 584, 22, stroke=1, fill=0)   # 一重円
     c.setFont(FJ, 6.5)
     c.drawCentredString(501, 589, "登記印")
     c.setLineWidth(0.6)
-    c.line(484, 585, 518, 585)                  # 横線（装飾）
-    c.setFont(FH, 7)
+    c.line(484, 585, 518, 585)                  # 横線
+    c.setFont(FJ, 7)
     c.drawCentredString(501, 576, "UFJ")
-    # リセット
+    # カラーリセット
     c.setStrokeColorRGB(0, 0, 0)
     c.setFillColorRGB(0, 0, 0)
-    c.setLineWidth(0.5)
+    c.setLineWidth(0.25)
 
-    # お取引店・電話: 実測 x=280, y0=533/517
+    # お取引店・電話
+    # 原本実測: "お取引店 草津　支店" x=280, y=534.5, size=10
     c.setFont(FJ, 10)
-    c.drawString(280, 533, f"お取引店　{data.get('branch', '')}　支店")
-    c.drawString(280, 518, f"電　　話　{data.get('phone', '')}")
+    c.drawString(280, 534, f"お取引店　{data.get('branch', '')}　支店")
+
+    # 原本実測: '電'(280,519.5) '話 077...'(290,519.5) → 連続描画
+    c.drawString(280, 519, "電")
+    c.drawString(290, 519, f"話　{data.get('phone', '')}")
 
     # ── 7. 残高テーブル ──────────────────────────────────────────────────────
-    _draw_table(c, data, FJ, FH)
+    _draw_table(c, data, FJ)
 
     # ── 8. フッター ──────────────────────────────────────────────────────────
-    # 実測: x=65, y=45/39/33/27, fs=6
+    # 原本実測: x=65, y=45/39/33/27, size=6
     c.setFont(FJ, 6)
     notes = [
         "・この証明書の金額は訂正いたしません。",
@@ -194,76 +197,77 @@ def _draw_certificate(c, data: dict):
         fy -= 6
 
 
-def _draw_table(c, data: dict, FJ: str, FH: str):
+def _draw_table(c, data: dict, FJ: str):
     """
     残高テーブルを描画する
-    座標はサンプルPDFから実測（pdfminer + 目視確認）
+    原本 pdfminer 実測値に完全準拠
+    全線: lw=0.25, 実線（setDash([])）
     """
     # ── 列境界（x 座標）──────────────────────────────────────────────────────
-    # 実測: X1=65, X2=205, X3=290, X4=410, X5=530
+    # 原本実測: X1=65, X2=205, X3=290, X4=410, X5=530
     X1, X2, X3, X4, X5 = 65, 205, 290, 410, 530
     TW = X5 - X1  # = 465
 
     # ── 行の y 座標 ──────────────────────────────────────────────────────────
-    top_y   = 502   # テーブル上端（ヘッダー上）
+    top_y   = 502   # テーブル上端
     hdr_bot = 472   # ヘッダー下端 / データ行上端
     bot_y   = 52    # テーブル下端
-    ROW_H   = 30    # 全行の高さ（ヘッダー含む）
+    ROW_H   = 30    # 全行の高さ
+
+    c.setDash([])         # 実線（必ず最初にリセット）
+    c.setLineWidth(0.25)  # 原本: 全線 lw=0.25
 
     # ── 外枠 ─────────────────────────────────────────────────────────────────
-    c.setDash([])
-    c.setLineWidth(0.5)
     c.rect(X1, bot_y, TW, top_y - bot_y)
 
-    # ── 縦区切り線（実線、テーブル全高） ─────────────────────────────────────
+    # ── 主要縦区切り線（テーブル全高）────────────────────────────────────────
+    # 原本実測: x=205, 290, 410 それぞれ y=52〜y=502
     for cx in [X2, X3, X4]:
         c.line(cx, bot_y, cx, top_y)
 
-
-    # ── 水平区切り線（ヘッダー下端から30pt毎） ───────────────────────────────
+    # ── 水平区切り線（hdr_bot から ROW_H 毎）────────────────────────────────
+    # 原本実測: y=472, 442, 412, ..., 82 (x=65〜530)
     y = hdr_bot
     while y > bot_y:
         c.line(X1, y, X5, y)
         y -= ROW_H
 
+    # ── 数字グリッド縦線（実線、lw=0.25）────────────────────────────────────
+    # 原本実測（全て y=52〜y=472）:
+    #   残高列 (X3〜X4): x=317.5, 335.5, 354.5, 372.5, 391.5
+    #   証券類列 (X4〜X5): x=437.5, 455.5, 474.5, 492.5, 511.5
+    for gx in [317.5, 335.5, 354.5, 372.5, 391.5,
+               437.5, 455.5, 474.5, 492.5, 511.5]:
+        c.line(gx, bot_y, gx, hdr_bot)
+
     # ── ヘッダーテキスト ──────────────────────────────────────────────────────
-    # 実測: 上段 y0=491 (fs=7), 下段 y0=480 (fs=7/6)
+    # 原本実測: x=X+1（X1+1=66, X2+1=206, X3+1=291, X4+1=411）
     c.setFont(FJ, 7)
-    c.drawString(X1 + 3, 491, "勘定")
-    c.setFont(FH, 7)
-    c.drawString(X1 + 3, 480, "ACCOUNT")
-    c.setFont(FJ, 7)
-    c.drawString(X2 + 3, 491, "口座番号")
-    c.setFont(FH, 7)
-    c.drawString(X2 + 3, 480, "ACCOUNT No.")
-    c.setFont(FJ, 7)
-    c.drawString(X3 + 3, 491, "残高")
-    c.setFont(FH, 7)
-    c.drawString(X3 + 3, 480, "BALANCE")
-    c.setFont(FJ, 7)
-    c.drawString(X4 + 3, 491, "(内決済未確認証券類)")
-    c.setFont(FH, 6)
-    c.drawString(X4 + 3, 480, "(BILLS OR CHECKS FOR COLLECTION)")
+    c.drawString(X1 + 1, 491, "勘定")
+    c.drawString(X1 + 1, 480, "ACCOUNT")
+    c.drawString(X2 + 1, 491, "口座番号")
+    c.drawString(X2 + 1, 480, "ACCOUNT No.")
+    c.drawString(X3 + 1, 491, "残高")
+    c.drawString(X3 + 1, 480, "BALANCE")
+    c.drawString(X4 + 1, 491, "(内決済未確認証券類)")
+    c.setFont(FJ, 6)
+    c.drawString(X4 + 1, 481, "(BILLS OR CHECKS FOR COLLECTION)")
 
     # ── 普通預金行 ────────────────────────────────────────────────────────────
-    # 実測: テキスト y0≈444, "普通預金" x0=75, 口座番号 x0=228, 残高 x1=410, ¥0 x1=530
-    c.setLineWidth(0.3)
+    # 原本実測:
+    #   "普　通　預　金" x=75 (=X1+10), y=444.5
+    #   口座番号        h=227.87, y=444.5
+    #   残高            x=360.57 (右端 X4=410 に右揃え)
+    #   ¥0              x=517.64 (右端 X5=530 に右揃え)
     c.setFont(FJ, 10)
-    _t = c.beginText(X1 + 10, 444)
-    _t.setFont(FJ, 10)
-    _t.setTextRenderMode(2)
-    _t.textLine("普　通　預　金")
-    c.drawText(_t)
-    c.setLineWidth(0.5)
-    c.setFont(FH, 10)
-    c.drawString(X2 + 23, 444, data["account_no"])
+    c.drawString(X1 + 10, 444, "普　通　預　金")
+    c.drawString(228, 444, data["account_no"])
     c.drawRightString(X4, 444, f'¥{int(data["balance"])}')
     c.drawRightString(X5, 444, "¥0")
 
-    # ── 以下余白行 ────────────────────────────────────────────────────────────
-    # 実測: y0=414.5 → y≈415
-    c.setFont(FJ, 10)
-    c.drawCentredString((X1 + X2) / 2, 415, "以下余白")
+    # ── 以下余白 ─────────────────────────────────────────────────────────────
+    # 原本実測: x=145, y=414.5
+    c.drawString(145, 414, "以下余白")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
