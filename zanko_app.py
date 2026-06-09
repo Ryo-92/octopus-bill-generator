@@ -6,8 +6,9 @@
 
 import io
 import os
+import random
 import streamlit as st
-from datetime import date
+from datetime import date, timedelta
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
@@ -15,7 +16,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt（実測 595 × 842）
 _FONT_JP_PATH = os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
-_FONT_HV_PATH = os.path.join(os.path.dirname(__file__), "helvetica-regular.otf")
+# Helvetica は ReportLab 内蔵フォントのため登録不要
 _FONT_REGISTERED = False
 
 APP_TITLE = "残高証明書 生成ツール"
@@ -25,7 +26,7 @@ def _setup_font():
     global _FONT_REGISTERED
     if not _FONT_REGISTERED:
         pdfmetrics.registerFont(TTFont("JP", _FONT_JP_PATH))
-        pdfmetrics.registerFont(TTFont("HV", _FONT_HV_PATH))
+        # Helvetica は ReportLab 内蔵フォント（登録不要）
         _FONT_REGISTERED = True
 
 
@@ -49,8 +50,8 @@ def generate_pdf(data: dict) -> bytes:
 
 
 def _draw_certificate(c, data: dict):
-    FJ = "JP"   # 日本語・混在テキスト
-    FH = "HV"   # 英字・数字（Helvetica）
+    FJ = "JP"          # 日本語・混在テキスト
+    FH = "Helvetica"   # 英字・数字（ReportLab 内蔵）
 
     # ── 1. ヘッダー ─────────────────────────────────────────────────────────
     # 実測: "残　高　証　明　書" x0=80, y0=803.5, fs=15
@@ -104,7 +105,7 @@ def _draw_certificate(c, data: dict):
     # 実測: x=85-89, y0=608/594/580（日本語 fs=10）, y0=564/549/534（英語 fs=7）
     c.setFont(FJ, 10)
     c.drawString(89, 608, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
-    c.drawString(85, 594, "下記勘定残高について相違なことを証明")
+    c.drawString(85, 594, "下記勘定残高について相違ないことを証明")
     c.drawString(85, 580, "いたします。")
 
     c.setFont(FH, 7)
@@ -235,12 +236,20 @@ st.title("🏦 " + APP_TITLE)
 st.caption("三菱UFJ銀行形式の残高証明書PDFを生成します")
 st.markdown("---")
 
+# ── ランダム初期値（セッション内で固定）────────────────────────────────────────
+if "rnd_acct" not in st.session_state:
+    st.session_state["rnd_acct"] = str(random.randint(1000000, 9999999))
+if "rnd_balance" not in st.session_state:
+    st.session_state["rnd_balance"] = random.randint(1000000, 4000000)
+if "rnd_cert_offset" not in st.session_state:
+    st.session_state["rnd_cert_offset"] = random.randint(1, 3)
+
 # ── ① 宛先情報（左側）────────────────────────────────────────────────────────
 st.subheader("① 宛先情報（左側）")
 
 col_p, col_n = st.columns([1, 1])
 with col_p:
-    postal = st.text_input("郵便番号（全角）", placeholder="例５２０－０２４６")
+    postal = st.text_input("郵便番号（全角）", placeholder="例）５２０－０２４６")
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）安森　瑞穂")
 
@@ -254,7 +263,7 @@ addr2 = st.text_input(
 )
 addr3 = st.text_input(
     "住所③（建物名・部屋番号など）",
-    placeholder="例）ドフルールオギノサト１０６",
+    placeholder="例）ドフルールオオギノサト１０６",
 )
 
 st.markdown("---")
@@ -268,13 +277,16 @@ st.markdown("---")
 
 # ── ③ 証明内容（中央）────────────────────────────────────────────────────────
 st.subheader("③ 証明内容（中央）")
-cert_date = st.date_input("証明日（残高の基準日）", value=today)
+cert_date = st.date_input(
+    "証明日（残高の基準日）",
+    value=issue_date - timedelta(days=st.session_state["rnd_cert_offset"]),
+)
 
 col_a, col_b = st.columns([1, 1])
 with col_a:
-    acct_no = st.text_input("口座番号", placeholder="例）0265071")
+    acct_no = st.text_input("口座番号", value=st.session_state["rnd_acct"], placeholder="例）0265071")
 with col_b:
-    balance = st.number_input("残高（円）", min_value=0, value=0, step=1000, format="%d")
+    balance = st.number_input("残高（円）", min_value=0, value=st.session_state["rnd_balance"], step=1, format="%d")
 
 st.markdown("---")
 
