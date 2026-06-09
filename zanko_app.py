@@ -56,8 +56,12 @@ def _draw_certificate(c, data: dict):
     # ── 1. ヘッダー ─────────────────────────────────────────────────────────
     # 実測: "残　高　証　明　書" x0=80, y0=803.5, fs=15
     #       "ACCOUNT BALANCE CERTIFICATE" x0=245, y0=803, fs=15
+    c.setLineWidth(0.3)
     c.setFont(FJ, 15)
+    c.setTextRenderMode(2)
     c.drawString(80, 803, "残　高　証　明　書")
+    c.setTextRenderMode(0)
+    c.setLineWidth(0.5)
     c.setFont(FH, 15)
     c.drawString(245, 803, "ACCOUNT BALANCE CERTIFICATE")
 
@@ -115,20 +119,36 @@ def _draw_certificate(c, data: dict):
 
     # ── 6. 銀行名（右） ─────────────────────────────────────────────────────
     # 実測: Figure bbox (302, 585.75, 472, 600) → x=302, y_baseline≈586
+    # 太字効果: テキスト描画モード2（塗り+輪郭）で太く見せる
+    c.setLineWidth(0.4)
     c.setFont(FJ, 22)
+    c.setTextRenderMode(2)   # fill + stroke → 疑似ボールド
     c.drawString(302, 582, "株式会社 三菱UFJ銀行")
+    c.setTextRenderMode(0)   # 通常に戻す
+    c.setLineWidth(0.5)
 
     # MUFG Bank, Ltd.  実測: Figure bbox (302, 565.84, 382, 575) → y≈566
     c.setFont(FH, 10)
     c.drawString(302, 564, "MUFG Bank, Ltd.")
 
-    # 印鑑（円）: 実測 Figure bbox (478, 562, 524, 607) → 中心(501, 584.5), r≈23
+    # ── 印鑑（赤い公印）─────────────────────────────────────────────────────
+    # 実測 Figure bbox (478, 562, 524, 607) → 中心(501, 584.5), r≈23
+    SEAL_RED = (0.72, 0.08, 0.08)   # MUFG系の深い赤
+    c.setStrokeColorRGB(*SEAL_RED)
+    c.setFillColorRGB(*SEAL_RED)
     c.setLineWidth(1.5)
-    c.circle(501, 584, 23, stroke=1, fill=0)
-    c.setFont(FJ, 7)
-    c.drawCentredString(501, 589, "登記印")
+    c.circle(501, 584, 23, stroke=1, fill=0)   # 外円
+    c.setLineWidth(0.8)
+    c.circle(501, 584, 20, stroke=1, fill=0)   # 内円（二重円）
+    c.setFont(FJ, 6.5)
+    c.drawCentredString(501, 590, "登　記　印")
+    c.setLineWidth(0.6)
+    c.line(484, 586, 518, 586)                  # 横線（装飾）
     c.setFont(FH, 7)
-    c.drawCentredString(501, 579, "UFJ")
+    c.drawCentredString(501, 577, "UFJ")
+    # リセット
+    c.setStrokeColorRGB(0, 0, 0)
+    c.setFillColorRGB(0, 0, 0)
     c.setLineWidth(0.5)
 
     # お取引店・電話: 実測 x=280, y0=533/517
@@ -215,8 +235,12 @@ def _draw_table(c, data: dict, FJ: str, FH: str):
 
     # ── 普通預金行 ────────────────────────────────────────────────────────────
     # 実測: テキスト y0≈444, "普通預金" x0=75, 口座番号 x0=228, 残高 x1=410, ¥0 x1=530
+    c.setLineWidth(0.3)
     c.setFont(FJ, 10)
+    c.setTextRenderMode(2)
     c.drawString(X1 + 10, 444, "普　通　預　金")
+    c.setTextRenderMode(0)
+    c.setLineWidth(0.5)
     c.setFont(FH, 10)
     c.drawString(X2 + 23, 444, data["account_no"])
     c.drawRightString(X4, 444, f'¥{int(data["balance"])}')
@@ -249,21 +273,21 @@ st.subheader("① 宛先情報（左側）")
 
 col_p, col_n = st.columns([1, 1])
 with col_p:
-    postal = st.text_input("郵便番号（全角）", placeholder="例）５２０－０２４６")
+    postal = st.text_input("郵便番号（全角）", placeholder="例）１０１－０００１")
 with col_n:
-    name = st.text_input("氏名（フルネーム）", placeholder="例）安森　瑞穂")
+    name = st.text_input("氏名（フルネーム）", placeholder="例）田中　太郎")
 
 addr1 = st.text_input(
     "住所①（都道府県・市区町村）",
-    placeholder="例）滋賀県　大津市",
+    placeholder="例）東京都　新宿区",
 )
 addr2 = st.text_input(
     "住所②（番地）",
-    placeholder="例）オオギノサト　　３—２－１６　シャン",
+    placeholder="例）西新宿　　１－１－１",
 )
 addr3 = st.text_input(
     "住所③（建物名・部屋番号など）",
-    placeholder="例）ドフルールオオギノサト１０６",
+    placeholder="例）新宿マンション１０１",
 )
 
 st.markdown("---")
