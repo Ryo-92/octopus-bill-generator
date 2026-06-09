@@ -1,9 +1,10 @@
 """
 残高証明書（三菱UFJ銀行形式）生成ツール — Streamlit Web アプリ
 座標はサンプルPDFからpdfminerで実測した値を使用
-フォント: 英字・数字 → Helvetica, 日本語 → IBM Plex Sans JP
+フォント: 英字・数字 → Helvetica, 日本語 → IPAexMincho
 """
 
+import glob as _glob
 import io
 import os
 import random
@@ -15,7 +16,23 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
 PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt（実測 595 × 842）
-_FONT_JP_PATH = os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
+
+
+def _find_font_jp() -> str:
+    """IPAexMincho フォントパスを動的に探す（Streamlit Cloud: fonts-ipaexfont）"""
+    for pattern in [
+        '/usr/share/fonts/**/*ipaexm*.ttf',
+        '/usr/share/fonts/**/*ipaexm*.otf',
+        '/usr/share/fonts/**/*IPAexMincho*.ttf',
+    ]:
+        hits = sorted(_glob.glob(pattern, recursive=True))
+        if hits:
+            return hits[0]
+    # フォールバック: IBMPlexSansJP（ローカロ開発用）
+    return os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
+
+
+_FONT_JP_PATH = _find_font_jp()
 # Helvetica は ReportLab 内蔵フォントのため登録不要
 _FONT_REGISTERED = False
 
@@ -141,15 +158,13 @@ def _draw_certificate(c, data: dict):
     c.setStrokeColorRGB(*SEAL_RED)
     c.setFillColorRGB(*SEAL_RED)
     c.setLineWidth(1.5)
-    c.circle(501, 584, 23, stroke=1, fill=0)   # 外円
-    c.setLineWidth(0.8)
-    c.circle(501, 584, 20, stroke=1, fill=0)   # 内円（二重円）
+    c.circle(501, 584, 22, stroke=1, fill=0)   # 一重円（原本通り）
     c.setFont(FJ, 6.5)
-    c.drawCentredString(501, 590, "登　記　印")
+    c.drawCentredString(501, 589, "登記印")
     c.setLineWidth(0.6)
-    c.line(484, 586, 518, 586)                  # 横線（装飾）
+    c.line(484, 585, 518, 585)                  # 横線（装飾）
     c.setFont(FH, 7)
-    c.drawCentredString(501, 577, "UFJ")
+    c.drawCentredString(501, 576, "UFJ")
     # リセット
     c.setStrokeColorRGB(0, 0, 0)
     c.setFillColorRGB(0, 0, 0)
@@ -204,13 +219,6 @@ def _draw_table(c, data: dict, FJ: str, FH: str):
     for cx in [X2, X3, X4]:
         c.line(cx, bot_y, cx, top_y)
 
-    # ── 残高・内決済 桁グリッド（点線、データ行のみ hdr_bot → bot_y）─────────
-    # 実測: 各列に5本の点線 (x オフセット 27.5, 45.5, 64.5, 82.5, 101.5)
-    c.setDash([1, 2])
-    for dx in [27.5, 45.5, 64.5, 82.5, 101.5]:
-        c.line(X3 + dx, bot_y, X3 + dx, hdr_bot)
-        c.line(X4 + dx, bot_y, X4 + dx, hdr_bot)
-    c.setDash([])
 
     # ── 水平区切り線（ヘッダー下端から30pt毎） ───────────────────────────────
     y = hdr_bot
