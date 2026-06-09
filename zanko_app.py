@@ -296,6 +296,8 @@ st.markdown("---")
 st.subheader("② 発行日（右上）")
 today = date.today()
 issue_date = st.date_input("発行日", value=today)
+if issue_date is None:
+    issue_date = today
 
 st.markdown("---")
 
