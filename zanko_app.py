@@ -58,9 +58,11 @@ def _draw_certificate(c, data: dict):
     #       "ACCOUNT BALANCE CERTIFICATE" x0=245, y0=803, fs=15
     c.setLineWidth(0.3)
     c.setFont(FJ, 15)
-    c.setTextRenderMode(2)
-    c.drawString(80, 803, "残　高　証　明　書")
-    c.setTextRenderMode(0)
+    _t = c.beginText(80, 803)
+    _t.setFont(FJ, 15)
+    _t.setTextRenderMode(2)
+    _t.textLine("残　高　証　明　書")
+    c.drawText(_t)
     c.setLineWidth(0.5)
     c.setFont(FH, 15)
     c.drawString(245, 803, "ACCOUNT BALANCE CERTIFICATE")
@@ -122,9 +124,11 @@ def _draw_certificate(c, data: dict):
     # 太字効果: テキスト描画モード2（塗り+輪郭）で太く見せる
     c.setLineWidth(0.4)
     c.setFont(FJ, 22)
-    c.setTextRenderMode(2)   # fill + stroke → 疑似ボールド
-    c.drawString(302, 582, "株式会社 三菱UFJ銀行")
-    c.setTextRenderMode(0)   # 通常に戻す
+    _t = c.beginText(302, 582)
+    _t.setFont(FJ, 22)
+    _t.setTextRenderMode(2)   # fill + stroke → 疑似ボールド
+    _t.textLine("株式会社 三菱UFJ銀行")
+    c.drawText(_t)
     c.setLineWidth(0.5)
 
     # MUFG Bank, Ltd.  実測: Figure bbox (302, 565.84, 382, 575) → y≈566
@@ -237,9 +241,11 @@ def _draw_table(c, data: dict, FJ: str, FH: str):
     # 実測: テキスト y0≈444, "普通預金" x0=75, 口座番号 x0=228, 残高 x1=410, ¥0 x1=530
     c.setLineWidth(0.3)
     c.setFont(FJ, 10)
-    c.setTextRenderMode(2)
-    c.drawString(X1 + 10, 444, "普　通　預　金")
-    c.setTextRenderMode(0)
+    _t = c.beginText(X1 + 10, 444)
+    _t.setFont(FJ, 10)
+    _t.setTextRenderMode(2)
+    _t.textLine("普　通　預　金")
+    c.drawText(_t)
     c.setLineWidth(0.5)
     c.setFont(FH, 10)
     c.drawString(X2 + 23, 444, data["account_no"])
