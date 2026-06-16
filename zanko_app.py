@@ -26,7 +26,7 @@ def _find_font_jp() -> str:
         '/usr/share/fonts/**/*ipaexm*.otf',
         '/usr/share/fonts/**/*IPAexMincho*.ttf',
     ]:
-        hits = sorted(_glo[.glob(pattern, recursive=True))
+        hits = sorted(_glob.glob(pattern, recursive=True))
         if hits:
             return hits[0]
     # フォールバック: IBMPlexSansJP（ローカル開発用）
