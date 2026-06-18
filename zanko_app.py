@@ -648,30 +648,30 @@ def _draw_certificate(c, data: dict):
     c.drawString(364, 790.70, "同文のもの　１通発行の内第　１号")
 
     # 原本実測: "This is the 1st copy..." x=329.03, y=774.5, size=10
-    c.drawString(329, 775.70, "This is the 1st copy of 1 duplicate issued.")
+    c.drawString(329.03, 775.70, "This is the 1st copy of 1 duplicate issued.")
 
     # 原本実測: "指定口座" x=75, y=759.5, size=10
     c.drawString(75, 760.70, "指定口座")
 
     # 原本実測: "1 ぺージ" x=479.12, y=759.5, size=10
-    c.drawString(479, 760.70, "1 ページ")
+    c.drawString(479.12, 760.70, "1 ページ")
 
     # ── 2. 発行日（右側）────────────────────────────────────────────────────
     # 原本実測: x=418.28, y=729.5, size=10
-    c.drawString(418, 730.70, _ja_date(data["issue_date"]))
+    c.drawString(418.28, 730.70, _ja_date(data["issue_date"]))
 
     # ── 3. 住所・氏名（左）──────────────────────────────────────────────────
     # 原本実測: 郵便番号 x=75, y=713.43, size=10, 行間 15pt
-    c.drawString(75, 716.22, data["postal_code"])
+    c.drawString(75, 715.70, data["postal_code"])
 
-    addr_y = 701.22
+    addr_y = 700.70
     for ln in [data.get("address1", ""), data.get("address2", ""), data.get("address3", "")]:
         if ln and ln.strip():
             c.drawString(75, addr_y, ln.strip())
         addr_y -= 15  # 空行でも行送り（書式固定レイアウト）
 
     # 原本実測: 氏名 x=75, y=653.43（アドレス行数に関わらず固定）
-    c.drawString(75, 656.22, data["name"] + "　様")
+    c.drawString(75, 655.70, data["name"] + "　様")
 
     # ── 4. 区切り線 ──────────────────────────────────────────────────────────
     # 原本実測: (75,637)→(495,637), lw=0.25
@@ -681,19 +681,19 @@ def _draw_certificate(c, data: dict):
     # ── 5. 証明文（左）──────────────────────────────────────────────────────
     # 原本実測: x=89.28, y=610.02, size=10
     c.setFont(FJ, 10)
-    c.drawString(89, 611.22, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
+    c.drawString(89.28, 610.70, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
 
     # 原本実測: x=85, y=594.76
-    c.drawString(85, 595.96, "下記勘定残高について相違ないことを証明")
+    c.drawString(85, 595.70, "下記勘定残高について相違ないことを証明")
 
     # 原本実測: x=85, y=580.02
-    c.drawString(85, 581.22, "いたします。")
+    c.drawString(85, 580.70, "いたします。")
 
     # 英語証明文: x=85, y=564.42/549.42/534.42, size=7
     c.setFont(FJ, 7)
-    c.drawString(85, 565.26, "THIS IS TO CERTIFY THAT THE BALANCE OF")
-    c.drawString(85, 550.26, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
-    c.drawString(85, 535.26, "THE AMOUNT(S) INDICATED BELOW.")
+    c.drawString(85, 566.84, "THIS IS TO CERTIFY THAT THE BALANCE OF")
+    c.drawString(85, 551.84, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
+    c.drawString(85, 536.84, "THE AMOUNT(S) INDICATED BELOW.")
 
     # ── 6. 銀行名＋印影（原本PDFからクロップした画像をそのまま貼付）────────
     # 原本 bbox: x=288～542, y=543～622（PDF底基準）→ width=254pt, height=79pt
@@ -800,7 +800,7 @@ def _draw_table(c, data: dict, FJ: str):
 
     # ── 以下余白 ─────────────────────────────────────────────────────────────
     # 原本実測: x=145, y=414.5
-    c.drawString(145, 415.70, "以下余白")
+    c.drawString(75, 415.70, "以下余白")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
