@@ -637,7 +637,7 @@ def _draw_certificate(c, data: dict):
     # ── 1. ヘッダー ─────────────────────────────────────────────────────────
     # 原本実測: "残　高　証　明　書" x=80, y=803.5, size=15
     c.setFont(FJ, 15)
-    c.drawString(80, 803, "残　高　証　明　書")
+    c.drawString(80, 803.5, "残　高　証　明　書")
 
     # 原本実測: "ACCOUNT BALANCE CERTIFICATE" x=245, y=803, size=15
     c.setFont(FJ, 15)
@@ -645,33 +645,33 @@ def _draw_certificate(c, data: dict):
 
     # 原本実測: "同文のもの..." x=364, y=789.5, size=10
     c.setFont(FJ, 10)
-    c.drawString(364, 789, "同文のもの　１通発行の内第　１号")
+    c.drawString(364, 789.5, "同文のもの　１通発行の内第　１号")
 
     # 原本実測: "This is the 1st copy..." x=329.03, y=774.5, size=10
-    c.drawString(329, 774, "This is the 1st copy of 1 duplicate issued.")
+    c.drawString(329, 774.5, "This is the 1st copy of 1 duplicate issued.")
 
     # 原本実測: "指定口座" x=75, y=759.5, size=10
-    c.drawString(75, 759, "指定口座")
+    c.drawString(75, 759.5, "指定口座")
 
     # 原本実測: "1 ぺージ" x=479.12, y=759.5, size=10
-    c.drawString(479, 759, "1 ページ")
+    c.drawString(479, 759.5, "1 ページ")
 
     # ── 2. 発行日（右側）────────────────────────────────────────────────────
     # 原本実測: x=418.28, y=729.5, size=10
-    c.drawString(418, 729, _ja_date(data["issue_date"]))
+    c.drawString(418, 729.5, _ja_date(data["issue_date"]))
 
     # ── 3. 住所・氏名（左）──────────────────────────────────────────────────
     # 原本実測: 郵便番号 x=75, y=713.43, size=10, 行間 15pt
-    c.drawString(75, 713, data["postal_code"])
+    c.drawString(75, 713.5, data["postal_code"])
 
-    addr_y = 698
+    addr_y = 698.5
     for ln in [data.get("address1", ""), data.get("address2", ""), data.get("address3", "")]:
         if ln and ln.strip():
             c.drawString(75, addr_y, ln.strip())
         addr_y -= 15  # 空行でも行送り（書式固定レイアウト）
 
     # 原本実測: 氏名 x=75, y=653.43（アドレス行数に関わらず固定）
-    c.drawString(75, 653, data["name"] + "　様")
+    c.drawString(75, 653.5, data["name"] + "　様")
 
     # ── 4. 区切り線 ──────────────────────────────────────────────────────────
     # 原本実測: (75,637)→(495,637), lw=0.25
@@ -684,16 +684,16 @@ def _draw_certificate(c, data: dict):
     c.drawString(89, 610, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
 
     # 原本実測: x=85, y=594.76
-    c.drawString(85, 594, "下記勘定残高について相違ないことを証明")
+    c.drawString(85, 594.76, "下記勘定残高について相違ないことを証明")
 
     # 原本実測: x=85, y=580.02
     c.drawString(85, 580, "いたします。")
 
     # 英語証明文: x=85, y=564.42/549.42/534.42, size=7
     c.setFont(FJ, 7)
-    c.drawString(85, 564, "THIS IS TO CERTIFY THAT THE BALANCE OF")
-    c.drawString(85, 549, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
-    c.drawString(85, 534, "THE AMOUNT(S) INDICATED BELOW.")
+    c.drawString(85, 564.5, "THIS IS TO CERTIFY THAT THE BALANCE OF")
+    c.drawString(85, 549.5, "YOUR ACCOUNT(S) WITH MUFG Bank SHOW(S)")
+    c.drawString(85, 534.5, "THE AMOUNT(S) INDICATED BELOW.")
 
     # ── 6. 銀行名＋印影（原本PDFからクロップした画像をそのまま貼付）────────
     # 原本 bbox: x=288～542, y=543～622（PDF底基準）→ width=254pt, height=79pt
@@ -703,11 +703,11 @@ def _draw_certificate(c, data: dict):
     # お取引店・電話
     # 原本実測: "お取引店 草津　支店" x=280, y=534.5, size=10
     c.setFont(FJ, 10)
-    c.drawString(280, 534, f"お取引店　{data.get('branch', '')}　支店")
+    c.drawString(280, 534.5, f"お取引店　{data.get('branch', '')}　支店")
 
     # 原本実測: '電'(280,519.5) '話 077...'(290,519.5) → 連続描画
-    c.drawString(280, 519, "電")
-    c.drawString(290, 519, f"話　{data.get('phone', '')}")
+    c.drawString(280, 519.5, "電")
+    c.drawString(290, 519.5, f"話　{data.get('phone', '')}")
 
     # ── 7. 残高テーブル ──────────────────────────────────────────────────────
     _draw_table(c, data, FJ)
@@ -767,9 +767,11 @@ def _draw_table(c, data: dict, FJ: str):
     # 原本実測（全て y=52〜y=472）:
     #   残高列 (X3〜X4): x=317.5, 335.5, 354.5, 372.5, 391.5
     #   証券類列 (X4〜X5): x=437.5, 455.5, 474.5, 492.5, 511.5
+    c.setDash([2, 2])   # 点線（原本通り）
     for gx in [317.5, 335.5, 354.5, 372.5, 391.5,
                437.5, 455.5, 474.5, 492.5, 511.5]:
         c.line(gx, bot_y, gx, hdr_bot)
+    c.setDash([])       # 実線に戻す
 
     # ── ヘッダーテキスト ──────────────────────────────────────────────────────
     # 原本実測: x=X+1（X1+1=66, X2+1=206, X3+1=291, X4+1=411）
@@ -791,14 +793,14 @@ def _draw_table(c, data: dict, FJ: str):
     #   残高            x=360.57 (右端 X4=410 に右揃え)
     #   ¥0              x=517.64 (右端 X5=530 に右揃え)
     c.setFont(FJ, 10)
-    c.drawString(X1 + 10, 444, "普　通　預　金")
-    c.drawString(228, 444, data["account_no"])
-    c.drawRightString(X4, 444, f'¥{int(data["balance"])}')
-    c.drawRightString(X5, 444, "¥0")
+    c.drawString(X1 + 10, 444.5, "普　通　預　金")
+    c.drawString(228, 444.5, data["account_no"])
+    c.drawRightString(X4, 444.5, f'¥{int(data["balance"])}')
+    c.drawRightString(X5, 444.5, "¥0")
 
     # ── 以下余白 ─────────────────────────────────────────────────────────────
     # 原本実測: x=145, y=414.5
-    c.drawString(145, 414, "以下余白")
+    c.drawString(145, 414.5, "以下余白")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
