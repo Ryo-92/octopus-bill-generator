@@ -16,7 +16,7 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-PAGE_W, PAGE_H = A4   # 595.28 × 841.89 pt
+PAGE_W, PAGE_H = (595, 842)   # 原本通り: 595 × 842 pt
 
 
 def _find_font_jp() -> str:
@@ -621,7 +621,7 @@ def _ja_date(d: date) -> str:
 def generate_pdf(data: dict) -> bytes:
     _setup_font()
     buf = io.BytesIO()
-    c = rl_canvas.Canvas(buf, pagesize=A4)
+    c = rl_canvas.Canvas(buf, pagesize=(595, 842))  # 原本通り: 595 × 842 pt
     _draw_certificate(c, data)
     c.save()
     buf.seek(0)
@@ -722,7 +722,7 @@ def _draw_certificate(c, data: dict):
         "・｢当座貸越(総合)｣には、普通預金貸越型のカードローンご利用額も含まれます。",
         "・口座番号欄は、口座指定のご依頼の場合のみ表示します。",
     ]
-    fy = 45
+    fy = 45.72  # 原本実測ベースライン
     for note in notes:
         c.drawString(65, fy, note)
         fy -= 6
