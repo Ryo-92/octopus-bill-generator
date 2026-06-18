@@ -658,7 +658,14 @@ def _draw_certificate(c, data: dict):
 
     # ── 2. 発行日（右側）────────────────────────────────────────────────────
     # 原本実測: x=418.28, y=729.5, size=10
-    c.drawString(418.28, 730.70, _ja_date(data["issue_date"]))
+    # 原本実測: 各コンポーネント固定座標配置
+    _d = data["issue_date"]
+    c.drawString(418.28, 730.70, str(_d.year))
+    c.drawString(448,    730.70, "年")
+    c.drawString(464.64, 730.70, str(_d.month).rjust(2))
+    c.drawString(481,    730.70, "月")
+    c.drawString(497.64, 730.70, str(_d.day).rjust(2))
+    c.drawString(514,    730.70, "日")
 
     # ── 3. 住所・氏名（左）──────────────────────────────────────────────────
     # 原本実測: 郵便番号 x=75, y=713.43, size=10, 行間 15pt
@@ -681,7 +688,15 @@ def _draw_certificate(c, data: dict):
     # ── 5. 証明文（左）──────────────────────────────────────────────────────
     # 原本実測: x=89.28, y=610.02, size=10
     c.setFont(FJ, 10)
-    c.drawString(89.28, 610.70, f"　{_ja_date(data['cert_date'])}現在の貴方ご名義")
+    # 原本実測: 各コンポーネント固定座標配置
+    c.setFont(FJ, 10)
+    _cd = data["cert_date"]
+    c.drawString(89.28,  610.70, str(_cd.year))
+    c.drawString(119,    610.70, "年")
+    c.drawString(135.64, 610.70, str(_cd.month).rjust(2))
+    c.drawString(152,    610.70, "月")
+    c.drawString(168.64, 610.70, str(_cd.day).rjust(2))
+    c.drawString(185,    610.70, "日現在の貴方ご名義")
 
     # 原本実測: x=85, y=594.76
     c.drawString(85, 595.70, "下記勘定残高について相違ないことを証明")
