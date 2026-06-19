@@ -6,6 +6,7 @@
 """
 
 import glob as _glob
+import hmac
 import io
 import os
 import random
@@ -898,6 +899,60 @@ def _draw_table(c, data: dict, FJ: str):
     # ── 以下余白 ─────────────────────────────────────────────────────────────
     # 原本実測: x=145, y=414.5
     c.drawString(145, 415.70, "以下余白")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 認証
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _check_password() -> bool:
+    """
+    パスワード認証画面を表示し、認証済みかどうかを返す。
+
+    パスワードは st.secrets["APP_PASSWORD"] から読み込む。
+    コードには一切書かない（GitHubに公開されるため）。
+    Streamlit Cloud の Secrets 管理画面で設定すること。
+    """
+    if st.session_state.get("_authenticated"):
+        return True
+
+    st.title("🔐 残高証明書生成ツール")
+    st.caption("このツールはパスワードで保護されています。")
+    st.markdown("---")
+
+    with st.form("_login_form", clear_on_submit=True):
+        pw_input = st.text_input(
+            "パスワード",
+            type="password",
+            placeholder="パスワードを入力してください",
+        )
+        submitted = st.form_submit_button(
+            "ログイン", use_container_width=True, type="primary"
+        )
+
+    if submitted:
+        try:
+            correct = st.secrets["APP_PASSWORD"]
+        except (KeyError, FileNotFoundError):
+            st.error(
+                "⚠️ サーバー設定エラー: APP_PASSWORD が Secrets に設定されていません。"
+                "管理者に連絡してください。"
+            )
+            return False
+
+        # タイミング攻撃対策: hmac.compare_digest を使用
+        if hmac.compare_digest(pw_input.encode(), correct.encode()):
+            st.session_state["_authenticated"] = True
+            st.rerun()
+        else:
+            st.error("❌ パスワードが正しくありません。")
+
+    return False
+
+
+# 認証チェック — 失敗時は以降の UI を一切表示しない
+if not _check_password():
+    st.stop()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
