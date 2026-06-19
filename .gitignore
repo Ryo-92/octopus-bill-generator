@@ -6,3 +6,6 @@ Thumbs.db
 *.pdf
 !template_octopus.pdf
 !IBMPlexSansJP-Regular.ttf
+
+# Streamlit secrets — パスワード等を含むため絶対にコミットしない
+.streamlit/secrets.toml
