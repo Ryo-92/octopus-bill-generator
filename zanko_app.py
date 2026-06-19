@@ -658,8 +658,8 @@ def normalize_phone(s: str) -> str:
     """
     # 全角数字 → 半角
     s = s.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
-    # 半角カッコ → 全角
-    s = s.translate(str.maketrans('()', '（）'))
+    # カッコは常に半角（全角カッコ → 半角）
+    s = s.translate(str.maketrans('（）', '()'))
     # ハイフン類 → 全角ハイフン
     s = s.replace('-', '－').replace('\u2010', '－').replace('ー', '－')
     return s
@@ -1036,7 +1036,7 @@ with col_p:
     if postal.strip():
         _postal_fmt = to_fullwidth_postal(postal.strip())
         if _postal_fmt != postal.strip():
-            st.caption(f"📮 整形後: {_postal_fmt}")
+            st.caption(f"📮 自動変換して生成します：{_postal_fmt}")
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）田中　太郎")
 
@@ -1050,7 +1050,7 @@ addr_raw = st.text_input(
 if addr_raw.strip():
     _a1, _a2, _a3 = format_address(addr_raw.strip())
     _preview = "　".join(x for x in [_a1, _a2, _a3] if x)
-    st.caption(f"📍 整形後: {_preview}")
+    st.caption(f"📍 自動変換して生成します：{_preview}")
 
 st.markdown("---")
 
@@ -1092,7 +1092,7 @@ with col_ph:
     if phone.strip():
         _phone_fmt = normalize_phone(phone.strip())
         if _phone_fmt != phone.strip():
-            st.caption(f"📞 整形後: {_phone_fmt}")
+            st.caption(f"📞 自動変換して生成します：{_phone_fmt}")
 
 st.markdown("---")
 
