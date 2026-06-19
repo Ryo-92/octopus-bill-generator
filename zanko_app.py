@@ -621,6 +621,50 @@ def _ja_date(d: date) -> str:
 
 import re as _re
 
+# 建物名として認識するキーワード（これが出現した箇所から建物名として扱う）
+_BUILDING_KEYWORDS = (
+    'マンション', 'アパート', 'ハイツ', 'コーポ', 'コーポラス',
+    'ビル', 'タワー', 'プラザ', 'コート', 'パレス', 'レジデンス',
+    'ガーデン', 'ヒルズ', 'ハウス', 'テラス', 'シティ', 'ヴィラ',
+    'メゾン', 'ドミール', 'クレスト', 'ウイング', 'グランド',
+    'エクセル', 'ライオンズ', 'ダイアパレス', 'ステージ', 'ルーム',
+)
+
+def _split_town_building(s: str) -> tuple:
+    """
+    町名文字列から建物名キーワードを検出し (町名, 建物名) に分割する。
+    キーワードが先頭にある場合・見つからない場合は (s, '') を返す。
+    """
+    for kw in _BUILDING_KEYWORDS:
+        idx = s.find(kw)
+        if idx > 0:
+            return s[:idx], s[idx:]
+    return s, ''
+
+
+def to_fullwidth_postal(s: str) -> str:
+    """郵便番号: 半角数字・ハイフンを全角に統一する"""
+    return s.translate(str.maketrans('0123456789-', '０１２３４５６７８９－'))
+
+
+def normalize_phone(s: str) -> str:
+    """
+    電話番号の書式を統一する。
+      - 数字: 全角 → 半角
+      - カッコ（丸括弧）: 半角 ( ) → 全角 （ ）
+      - ハイフン類: すべて全角 － に統一
+    例: ０７７（563）8811 → 077（563）8811
+        077(563)-8811    → 077（563）－8811
+    """
+    # 全角数字 → 半角
+    s = s.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+    # 半角カッコ → 全角
+    s = s.translate(str.maketrans('()', '（）'))
+    # ハイフン類 → 全角ハイフン
+    s = s.replace('-', '－').replace('\u2010', '－').replace('ー', '－')
+    return s
+
+
 def format_address(raw: str) -> tuple:
     """
     住所文字列を解析し、各境界に全角スペースを挿入してPDF用の3行タプルを返す。
@@ -688,11 +732,19 @@ def format_address(raw: str) -> tuple:
         num = m.group(1)
         building = (m.group(2) or "").strip()
 
+    # 町名の中に建物名キーワードがあれば分離する
+    # 例: "西新宿新宿マンション" → town_real="西新宿", pre_num_building="新宿マンション"
+    town_real, pre_num_building = _split_town_building(town)
+
     # 行を組み立て
     line1 = '　'.join(segments[:2])                              # 都道府県　市区町村
-    line2_parts = ([town] if town else []) + ([num] if num else [])
-    line2 = '　'.join(line2_parts)                               # 町名　番地
-    line3 = building                                             # 建物名
+    line2_parts = (
+        ([town_real] if town_real else [])
+        + ([pre_num_building] if pre_num_building else [])
+        + ([num] if num else [])
+    )
+    line2 = '　'.join(line2_parts)                               # 町名　建物名（前）　番地
+    line3 = building                                             # 建物名（後）
 
     return (line1, line2, line3)
 
@@ -976,7 +1028,15 @@ st.subheader("① 宛先情報（左側）")
 
 col_p, col_n = st.columns([1, 1])
 with col_p:
-    postal = st.text_input("郵便番号（全角）", placeholder="例）１０１－０００１")
+    postal = st.text_input(
+        "郵便番号",
+        placeholder="例）101-0001 または １０１－０００１",
+        help="半角・全角どちらでも入力可。自動的に全角に統一されます。",
+    )
+    if postal.strip():
+        _postal_fmt = to_fullwidth_postal(postal.strip())
+        if _postal_fmt != postal.strip():
+            st.caption(f"📮 整形後: {_postal_fmt}")
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）田中　太郎")
 
@@ -1024,7 +1084,15 @@ col_br, col_ph = st.columns([1, 1])
 with col_br:
     branch = st.text_input("支店名", placeholder="例）草津")
 with col_ph:
-    phone = st.text_input("電話番号", placeholder="例）077(563)8811")
+    phone = st.text_input(
+        "電話番号",
+        placeholder="例）077(563)8811",
+        help="数字は半角、カッコ・ハイフンは全角に自動統一されます。",
+    )
+    if phone.strip():
+        _phone_fmt = normalize_phone(phone.strip())
+        if _phone_fmt != phone.strip():
+            st.caption(f"📞 整形後: {_phone_fmt}")
 
 st.markdown("---")
 
@@ -1042,7 +1110,7 @@ if st.button("📄　残高証明書PDFを生成する", use_container_width=Tru
         with st.spinner("PDFを生成中…"):
             _addr1, _addr2, _addr3 = format_address(addr_raw.strip())
             pdf_bytes = generate_pdf(dict(
-                postal_code=postal.strip(),
+                postal_code=to_fullwidth_postal(postal.strip()),
                 address1=_addr1,
                 address2=_addr2,
                 address3=_addr3,
@@ -1052,7 +1120,7 @@ if st.button("📄　残高証明書PDFを生成する", use_container_width=Tru
                 account_no=acct_no.strip(),
                 balance=int(balance),
                 branch=branch.strip(),
-                phone=phone.strip(),
+                phone=normalize_phone(phone.strip()),
             ))
 
         st.success("✅ 生成完了！")
