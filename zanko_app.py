@@ -8,8 +8,10 @@
 import glob as _glob
 import hmac
 import io
+import json as _json
 import os
 import random
+import urllib.request as _url_req
 import streamlit as st
 from datetime import date, timedelta
 from reportlab.lib.pagesizes import A4
@@ -642,6 +644,53 @@ def _split_town_building(s: str) -> tuple:
     return s, ''
 
 
+@st.cache_data(ttl=3600)
+def lookup_address_by_zip(zip7: str) -> tuple:
+    """
+    郵便番号（7桁数字文字列）から住所を取得する。zipcloud API を使用。
+    Returns: (都道府県, 市区町村, 町名)  失敗時は ("", "", "")
+    """
+    url = f"https://zipcloud.ibsnet.co.jp/api/search?zipcode={zip7}"
+    try:
+        with _url_req.urlopen(url, timeout=5) as resp:
+            data = _json.loads(resp.read().decode('utf-8'))
+        if data.get('results'):
+            r = data['results'][0]
+            return (r.get('address1', ''), r.get('address2', ''), r.get('address3', ''))
+    except Exception:
+        pass
+    return ('', '', '')
+
+
+def assemble_address_lines(pct: str, num: str, building: str) -> tuple:
+    """
+    都道府県〜町名(pct) / 番地(num) / 建物名・部屋番号(building) を
+    PDF用の3行タプルに組み立てる。
+      line1 = 都道府県　市区町村
+      line2 = 町名（複数可）　番地
+      line3 = 建物名・部屋番号
+    num・building の半角数字・ハイフンは全角に自動変換する。
+    """
+    _fw = str.maketrans('0123456789-', '０１２３４５６７８９－')
+    num_fw = num.strip().translate(_fw).replace('\u2010', '\uff0d')
+    bld_fw = building.strip().translate(_fw).replace('\u2010', '\uff0d')
+
+    parts = [p.strip() for p in pct.split('\u3000') if p.strip()]
+    if len(parts) >= 3:
+        line1 = '\u3000'.join(parts[:2])                                          # 都道府県　市区町村
+        line2 = '\u3000'.join(parts[2:] + ([num_fw] if num_fw else []))           # 町名…　番地
+    elif len(parts) == 2:
+        line1 = '\u3000'.join(parts)
+        line2 = num_fw
+    elif len(parts) == 1:
+        line1 = parts[0]
+        line2 = num_fw
+    else:
+        line1 = ''
+        line2 = num_fw
+    return (line1, line2, bld_fw)
+
+
 def to_fullwidth_postal(s: str) -> str:
     """郵便番号: 半角数字・ハイフンを全角に統一する"""
     return s.translate(str.maketrans('0123456789-', '０１２３４５６７８９－'))
@@ -1035,28 +1084,57 @@ with col_p:
     postal = st.text_input(
         "郵便番号",
         placeholder="例）101-0001 または １０１－０００１",
-        help="半角・全角どちらでも入力可。自動的に全角に統一されます。",
+        help="半角・全角どちらでも入力可。自動的に全角に統一されます。7桁入力で住所を自動取得します。",
     )
     if postal.strip():
         _postal_fmt = to_fullwidth_postal(postal.strip())
         if _postal_fmt != postal.strip():
             st.caption(f"📮 自動変換して生成します：{_postal_fmt}")
+    # 7桁になったら郵便番号APIで住所を自動取得
+    _zip_digits = ''.join(c for c in postal if c.isdigit())
+    if len(_zip_digits) == 7 and st.session_state.get('_last_zip') != _zip_digits:
+        _z1, _z2, _z3 = lookup_address_by_zip(_zip_digits)
+        if _z1:
+            st.session_state['_addr_pct'] = f"{_z1}　{_z2}　{_z3}"
+            st.session_state['_last_zip'] = _zip_digits
+            st.rerun()
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）田中　太郎")
     if name.strip() and '　' not in name.strip():
         st.warning("⚠️ 姓と名の間に全角スペースを入れてください（例：田中　太郎）")
 
-addr_raw = st.text_input(
-    "住所（都道府県〜建物名まで一括入力）",
-    placeholder="例）東京都新宿区西新宿１－１－１新宿マンション１０１",
-    help="都道府県・市区町村・番地・建物名の区切りに全角スペースを自動挿入します。"
-         "既に全角スペースが入っている場合はそのまま使用します。",
+# 住所：都道府県〜町名（郵便番号APIから自動補完）
+addr_pct = st.text_input(
+    "都道府県・市区町村・町名（郵便番号入力で自動取得）",
+    key='_addr_pct',
+    placeholder="例）東京都　新宿区　西新宿",
+    help="郵便番号を7桁入力すると自動で補完されます。内容を手動で修正することもできます。",
 )
-# プレビュー表示
-if addr_raw.strip():
-    _a1, _a2, _a3 = format_address(addr_raw.strip())
-    _preview = "　".join(x for x in [_a1, _a2, _a3] if x)
-    st.caption(f"📍 自動変換して生成します：{_preview}")
+if addr_pct.strip() and '　' not in addr_pct.strip():
+    st.warning("⚠️ 都道府県・市区町村・町名の間に全角スペースが必要です（例：東京都　新宿区　西新宿）")
+
+# 番地・建物名
+col_num, col_bld = st.columns([1, 2])
+with col_num:
+    addr_num = st.text_input(
+        "番地",
+        placeholder="例）１－１－１",
+        help="半角数字・ハイフンは自動で全角に変換されます。",
+    )
+    if addr_num.strip():
+        _num_fmt = addr_num.strip().translate(str.maketrans('0123456789-', '０１２３４５６７８９－'))
+        if _num_fmt != addr_num.strip():
+            st.caption(f"🏠 自動変換して生成します：{_num_fmt}")
+with col_bld:
+    addr_building = st.text_input(
+        "建物名・部屋番号（任意）",
+        placeholder="例）新宿マンション　１０１号室",
+        help="半角数字・ハイフンは自動で全角に変換されます。",
+    )
+    if addr_building.strip():
+        _bld_fmt = addr_building.strip().translate(str.maketrans('0123456789-', '０１２３４５６７８９－'))
+        if _bld_fmt != addr_building.strip():
+            st.caption(f"🏢 自動変換して生成します：{_bld_fmt}")
 
 st.markdown("---")
 
@@ -1105,16 +1183,19 @@ st.markdown("---")
 # ── 生成ボタン─────────────────────────────────────────────────────────────────
 if st.button("📄　残高証明書PDFを生成する", use_container_width=True, type="primary"):
     errs = []
-    if not postal.strip():     errs.append("郵便番号を入力してください。")
-    if not name.strip():       errs.append("氏名を入力してください。")
-    if not addr_raw.strip():   errs.append("住所を入力してください。")
-    if not acct_no.strip():    errs.append("口座番号を入力してください。")
+    if not postal.strip():       errs.append("郵便番号を入力してください。")
+    if not name.strip():         errs.append("氏名を入力してください。")
+    if not addr_pct.strip():     errs.append("都道府県・市区町村・町名を入力してください。")
+    if not addr_num.strip():     errs.append("番地を入力してください。")
+    if not acct_no.strip():      errs.append("口座番号を入力してください。")
     for e in errs:
         st.error(e)
 
     if not errs:
         with st.spinner("PDFを生成中…"):
-            _addr1, _addr2, _addr3 = format_address(addr_raw.strip())
+            _addr1, _addr2, _addr3 = assemble_address_lines(
+                addr_pct.strip(), addr_num.strip(), addr_building.strip()
+            )
             pdf_bytes = generate_pdf(dict(
                 postal_code=to_fullwidth_postal(postal.strip()),
                 address1=_addr1,
