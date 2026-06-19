@@ -615,6 +615,88 @@ def _ja_date(d: date) -> str:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 住所整形ユーティリティ
+# ──────────────────────────────────────────────────────────────────────────────
+
+import re as _re
+
+def format_address(raw: str) -> tuple:
+    """
+    住所文字列を解析し、各境界に全角スペースを挿入してPDF用の3行タプルを返す。
+
+    解析順序: 都道府県 → 市区町村（郡含む）→ 町名 → 番地 → 建物名
+
+    例:
+        "東京都新宿区西新宿１－１－１新宿マンション１０１"
+        → ("東京都　新宿区", "西新宿　１－１－１", "新宿マンション１０１")
+
+    - 既に全角スペースが含まれている場合は整形をスキップし、
+      3行に収まるよう分割して返す。
+    - 各行は最大約22全角文字を目安とする。
+
+    Returns:
+        (line1, line2, line3) のタプル（空行は空文字列）
+    """
+    s = raw.strip()
+    if not s:
+        return ("", "", "")
+
+    # 既にスペースが入っている場合 → そのまま3行に分割して返す
+    if '　' in s:
+        parts = s.split('　')
+        line1 = '　'.join(parts[:2]) if len(parts) >= 2 else parts[0]
+        remaining = parts[2:] if len(parts) > 2 else []
+        mid = len(remaining) // 2 + len(remaining) % 2
+        line2 = '　'.join(remaining[:mid])
+        line3 = '　'.join(remaining[mid:])
+        return (line1, line2, line3)
+
+    segments = []
+
+    # ① 都道府県
+    m = _re.match(r'^(.*?[都道府県])(.*)', s)
+    if not m:
+        return (s, "", "")
+    segments.append(m.group(1))
+    rest = m.group(2)
+
+    # ② 郡（オプション） + 市区町村
+    m = _re.match(r'^((?:.*?郡)?.*?[市区町村])(.*)', rest)
+    if not m:
+        return ('　'.join(segments) + rest, "", "")
+    segments.append(m.group(1))
+    rest = m.group(2)
+
+    # ③ 町名（数字の直前まで）
+    m = _re.match(r'^(.*?)([０-９0-9].*)$', rest, _re.DOTALL)
+    if not m:
+        # 数字がない → 残りはすべて町名
+        return ('　'.join(segments[:2]), rest, "")
+    town = m.group(1)
+    rest = m.group(2)
+
+    # ④ 番地（数字・全角ハイフン・丁目番地号の の連続）
+    m = _re.match(
+        r'^([０-９0-9][０-９0-9－\-ー丁目番地号の]*'
+        r'(?:[０-９0-9][０-９0-9－\-ー丁目番地号の]*)*)(.*)?$',
+        rest,
+    )
+    if not m:
+        num, building = rest, ""
+    else:
+        num = m.group(1)
+        building = (m.group(2) or "").strip()
+
+    # 行を組み立て
+    line1 = '　'.join(segments[:2])                              # 都道府県　市区町村
+    line2_parts = ([town] if town else []) + ([num] if num else [])
+    line2 = '　'.join(line2_parts)                               # 町名　番地
+    line3 = building                                             # 建物名
+
+    return (line1, line2, line3)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # PDF 生成
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -843,18 +925,17 @@ with col_p:
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）田中　太郎")
 
-addr1 = st.text_input(
-    "住所①（都道府県・市区町村）",
-    placeholder="例）東京都　新宿区",
+addr_raw = st.text_input(
+    "住所（都道府県〜建物名まで一括入力）",
+    placeholder="例）東京都新宿区西新宿１－１－１新宿マンション１０１",
+    help="都道府県・市区町村・番地・建物名の区切りに全角スペースを自動挿入します。"
+         "既に全角スペースが入っている場合はそのまま使用します。",
 )
-addr2 = st.text_input(
-    "住所②（番地）",
-    placeholder="例）西新宿　　１－１－１",
-)
-addr3 = st.text_input(
-    "住所③（建物名・部屋番号など）",
-    placeholder="例）新宿マンション１０１",
-)
+# プレビュー表示
+if addr_raw.strip():
+    _a1, _a2, _a3 = format_address(addr_raw.strip())
+    _preview = "　".join(x for x in [_a1, _a2, _a3] if x)
+    st.caption(f"📍 整形後: {_preview}")
 
 st.markdown("---")
 
@@ -895,20 +976,21 @@ st.markdown("---")
 # ── 生成ボタン─────────────────────────────────────────────────────────────────
 if st.button("📄　残高証明書PDFを生成する", use_container_width=True, type="primary"):
     errs = []
-    if not postal.strip():   errs.append("郵便番号を入力してください。")
-    if not name.strip():     errs.append("氏名を入力してください。")
-    if not addr1.strip():    errs.append("住所①を入力してください。")
-    if not acct_no.strip():  errs.append("口座番号を入力してください。")
+    if not postal.strip():     errs.append("郵便番号を入力してください。")
+    if not name.strip():       errs.append("氏名を入力してください。")
+    if not addr_raw.strip():   errs.append("住所を入力してください。")
+    if not acct_no.strip():    errs.append("口座番号を入力してください。")
     for e in errs:
         st.error(e)
 
     if not errs:
         with st.spinner("PDFを生成中…"):
+            _addr1, _addr2, _addr3 = format_address(addr_raw.strip())
             pdf_bytes = generate_pdf(dict(
                 postal_code=postal.strip(),
-                address1=addr1.strip(),
-                address2=addr2.strip(),
-                address3=addr3.strip(),
+                address1=_addr1,
+                address2=_addr2,
+                address3=_addr3,
                 name=name.strip(),
                 issue_date=issue_date,
                 cert_date=cert_date,
