@@ -686,6 +686,10 @@ def format_address(raw: str) -> tuple:
     if not s:
         return ("", "", "")
 
+    # 半角数字・ハイフンを全角に統一（部屋番号・番地を含む住所全体）
+    s = s.translate(str.maketrans('0123456789-', '０１２３４５６７８９－'))
+    s = s.replace('‐', '－')  # Unicode HYPHEN も全角化
+
     # 既にスペースが入っている場合 → そのまま3行に分割して返す
     if '　' in s:
         parts = s.split('　')
@@ -1039,6 +1043,8 @@ with col_p:
             st.caption(f"📮 自動変換して生成します：{_postal_fmt}")
 with col_n:
     name = st.text_input("氏名（フルネーム）", placeholder="例）田中　太郎")
+    if name.strip() and '　' not in name.strip():
+        st.warning("⚠️ 姓と名の間に全角スペースを入れてください（例：田中　太郎）")
 
 addr_raw = st.text_input(
     "住所（都道府県〜建物名まで一括入力）",
