@@ -672,10 +672,19 @@ def _fetch_branch_phone_by_code(branch_code: str) -> str:
     try:
         with _url_req.urlopen(url, timeout=10) as resp:
             html = resp.read().decode('utf-8')
-        # 電話番号セルを探す: "電話番号" の後の <td> に数字ハイフンが続く
-        m = _re.search(r'電話番号.*?<td[^>]*>([0-9()（）－\-]+)</td>', html, _re.DOTALL)
-        if m:
-            return m.group(1).strip()
+        # テーブル行を1行ずつ解析し「電話番号」ラベル行の値セルを取得する。
+        # （<a>タグ等でラップされた電話番号にも対応するため、セル内タグを除去してテキスト比較する）
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', html, _re.DOTALL | _re.IGNORECASE)
+        for row in rows:
+            # th・td 両方のセルを取得（ラベルが <th> の場合も対応）
+            cells = _re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', row, _re.DOTALL | _re.IGNORECASE)
+            if len(cells) < 2:
+                continue
+            label = _re.sub(r'<[^>]+>', '', cells[0]).strip()
+            if label == '電話番号':
+                value = _re.sub(r'<[^>]+>', '', cells[1]).strip()
+                if value and _re.match(r'[0-9]', value):
+                    return value
     except Exception:
         pass
     return ''
