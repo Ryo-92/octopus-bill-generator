@@ -11,6 +11,9 @@ import io
 import json as _json
 import os
 import random
+import re as _re
+import secrets as _secrets
+import urllib.parse as _url_parse
 import urllib.request as _url_req
 import streamlit as st
 from datetime import date, timedelta
@@ -662,6 +665,69 @@ def lookup_address_by_zip(zip7: str) -> tuple:
     return ('', '', '')
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def _fetch_branch_phone_by_code(branch_code: str) -> str:
+    """三菱UFJ支店コードから電話番号を取得する（zengin.ajtw.net dbs5 ページ）"""
+    url = f"https://zengin.ajtw.net/dbs5.php?abg=0005&abs={_url_parse.quote(branch_code)}"
+    try:
+        with _url_req.urlopen(url, timeout=10) as resp:
+            html = resp.read().decode('utf-8')
+        # 電話番号セルを探す: "電話番号" の後の <td> に数字ハイフンが続く
+        m = _re.search(r'電話番号.*?<td[^>]*>([0-9()（）－\-]+)</td>', html, _re.DOTALL)
+        if m:
+            return m.group(1).strip()
+    except Exception:
+        pass
+    return ''
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def lookup_branch_phone(branch_name: str) -> str:
+    """
+    支店名（例：「新宿」「新宿支店」）から三菱UFJ銀行の電話番号を取得する。
+    zengin.ajtw.net の全ひらがな頭文字ページを順に検索して支店コードを特定し、
+    詳細ページから電話番号を取得する。キャッシュ（24時間）で2回目以降は即時応答。
+    Returns: 電話番号文字列（例 "03-3341-9181"）、未検出時は ""
+    """
+    # 正規化: 末尾の「支店」「出張所」を除いた名称でも検索できるよう準備
+    name_clean = branch_name.strip()
+    name_bare = name_clean.replace('支店', '').replace('出張所', '').strip()
+
+    # 検索する全ひらがな頭文字（三菱UFJに存在する頭文字を網羅）
+    hiragana_chars = list('あいうえおかきくけこさしすせそたちつてとなにのはひふへほまみむめもやゆよらりわ')
+
+    for char in hiragana_chars:
+        url = f"https://zengin.ajtw.net/dbs4.php?abg=0005&abs={_url_parse.quote(char)}"
+        try:
+            with _url_req.urlopen(url, timeout=10) as resp:
+                html = resp.read().decode('utf-8')
+        except Exception:
+            continue
+
+        # 支店名が含まれているか高速チェック
+        if name_bare not in html and name_clean not in html:
+            continue
+
+        # テーブル行から (支店名, 支店コード) を抽出
+        # 典型的なHTML: <td>新宿支店</td>...<td><a href="/dbs5.php?abg=0005&abs=341">詳細情報</a></td>
+        rows = _re.findall(r'<tr[^>]*>(.*?)</tr>', html, _re.DOTALL)
+        for row in rows:
+            cells = _re.findall(r'<td[^>]*>(.*?)</td>', row, _re.DOTALL)
+            if not cells:
+                continue
+            first_cell = _re.sub(r'<[^>]+>', '', cells[0]).strip()
+            # 支店名一致チェック（「支店」あり・なし両方）
+            cell_bare = first_cell.replace('支店', '').replace('出張所', '').strip()
+            if cell_bare != name_bare:
+                continue
+            # コードを抽出
+            code_m = _re.search(r'abs=(\d+)', row)
+            if code_m:
+                return _fetch_branch_phone_by_code(code_m.group(1))
+
+    return ''
+
+
 def assemble_address_lines(pct: str, num: str, building: str) -> tuple:
     """
     都道府県〜町名(pct) / 番地(num) / 建物名・部屋番号(building) を
@@ -672,15 +738,15 @@ def assemble_address_lines(pct: str, num: str, building: str) -> tuple:
     num・building の半角数字・ハイフンは全角に自動変換する。
     """
     _fw = str.maketrans('0123456789-', '０１２３４５６７８９－')
-    num_fw = num.strip().translate(_fw).replace('\u2010', '\uff0d')
-    bld_fw = building.strip().translate(_fw).replace('\u2010', '\uff0d')
+    num_fw = num.strip().translate(_fw).replace('‐', '－')
+    bld_fw = building.strip().translate(_fw).replace('‐', '－')
 
-    parts = [p.strip() for p in pct.split('\u3000') if p.strip()]
+    parts = [p.strip() for p in pct.split('　') if p.strip()]
     if len(parts) >= 3:
-        line1 = '\u3000'.join(parts[:2])                                          # 都道府県　市区町村
-        line2 = '\u3000'.join(parts[2:] + ([num_fw] if num_fw else []))           # 町名…　番地
+        line1 = '　'.join(parts[:2])                                          # 都道府県　市区町村
+        line2 = '　'.join(parts[2:] + ([num_fw] if num_fw else []))           # 町名…　番地
     elif len(parts) == 2:
-        line1 = '\u3000'.join(parts)
+        line1 = '　'.join(parts)
         line2 = num_fw
     elif len(parts) == 1:
         line1 = parts[0]
@@ -688,7 +754,19 @@ def assemble_address_lines(pct: str, num: str, building: str) -> tuple:
     else:
         line1 = ''
         line2 = num_fw
-    return (line1, line2, bld_fw)
+    # 18文字ルール: line2 + 全角スペース + 建物名 が18文字以内なら同一行に結合
+    if not bld_fw:
+        return (line1, line2, '')
+    avail = 18 - len(line2) - 1  # -1 は区切りの全角スペース分
+    if avail <= 0:
+        # line2 がすでに18文字以上 → 建物名はそのまま line3 へ
+        return (line1, line2, bld_fw)
+    elif len(bld_fw) <= avail:
+        # 建物名が全部入る
+        return (line1, line2 + '　' + bld_fw, '')
+    else:
+        # 一部だけ line2 に入れ、残りを line3 へ
+        return (line1, line2 + '　' + bld_fw[:avail], bld_fw[avail:])
 
 
 def to_fullwidth_postal(s: str) -> str:
@@ -710,7 +788,7 @@ def normalize_phone(s: str) -> str:
     # カッコは常に半角（全角カッコ → 半角）
     s = s.translate(str.maketrans('（）', '()'))
     # ハイフン類 → 全角ハイフン
-    s = s.replace('-', '－').replace('\u2010', '－').replace('ー', '－')
+    s = s.replace('-', '－').replace('‐', '－').replace('ー', '－')
     return s
 
 
@@ -846,7 +924,6 @@ def _draw_certificate(c, data: dict):
     c.drawString(494,    760.70, "ページ")
 
     # ── 2. 発行日（右側）────────────────────────────────────────────────────
-    # 原本実測: x=418.28, y=729.5, size=10
     # 原本実測: 各コンポーネント固定座標配置
     _d = data["issue_date"]
     c.drawString(418.28, 730.70, str(_d.year))
@@ -875,8 +952,6 @@ def _draw_certificate(c, data: dict):
     c.line(75, 637, 495, 637)
 
     # ── 5. 証明文（左）──────────────────────────────────────────────────────
-    # 原本実測: x=89.28, y=610.02, size=10
-    c.setFont(FJ, 10)
     # 原本実測: 各コンポーネント固定座標配置
     c.setFont(FJ, 10)
     _cd = data["cert_date"]
@@ -1070,7 +1145,7 @@ st.markdown("---")
 
 # ── ランダム初期値（セッション内で固定）────────────────────────────────────────
 if "rnd_acct" not in st.session_state:
-    st.session_state["rnd_acct"] = str(random.randint(1000000, 9999999))
+    st.session_state["rnd_acct"] = str(_secrets.randbelow(9000000) + 1000000)
 if "rnd_balance" not in st.session_state:
     st.session_state["rnd_balance"] = random.randint(1000000, 4000000)
 if "rnd_cert_offset" not in st.session_state:
@@ -1166,12 +1241,28 @@ st.markdown("---")
 st.subheader("④ お取引店情報（右側）")
 col_br, col_ph = st.columns([1, 1])
 with col_br:
-    branch = st.text_input("支店名", placeholder="例）草津")
+    branch = st.text_input(
+        "支店名", placeholder="例）草津",
+        help="支店名を入力後、右の「電話番号を検索」ボタンで自動取得できます。",
+        key='_branch_input',
+    )
+    # 支店名が入力されたら電話番号検索ボタンを表示
+    if branch.strip():
+        if st.button("📞　電話番号を自動取得", key='btn_lookup_phone'):
+            with st.spinner(f"「{branch.strip()}支店」の電話番号を検索中…（初回は少し時間がかかります）"):
+                _found_phone = lookup_branch_phone(branch.strip())
+            if _found_phone:
+                st.session_state['_phone_input'] = normalize_phone(_found_phone)
+                st.success(f"✅ 取得しました：{_found_phone}")
+                st.rerun()
+            else:
+                st.warning("⚠️ 電話番号が見つかりませんでした。手動で入力してください。")
 with col_ph:
     phone = st.text_input(
         "電話番号",
         placeholder="例）077(563)8811",
         help="数字は半角、カッコ・ハイフンは全角に自動統一されます。",
+        key='_phone_input',
     )
     if phone.strip():
         _phone_fmt = normalize_phone(phone.strip())
