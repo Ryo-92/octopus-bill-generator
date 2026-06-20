@@ -681,7 +681,8 @@ def _fetch_branch_phone_by_code(branch_code: str) -> str:
             label = _re.sub(r'<[^>]+>', '', cells[0]).strip()
             if label == '電話番号':
                 value = _re.sub(r'<[^>]+>', '', cells[1]).strip()
-                if value and _re.match(r'[0-9]', value):
+                # ハイフン必須チェック（銀行コード等の純粋数字を誤返却しない）
+                if value and _re.match(r'[0-9]', value) and _re.search(r'[-－]', value):
                     return value
         # ── アプローチ2: <dt>電話番号</dt><dd>…</dd> パターン ──
         m2 = _re.search(
@@ -1188,8 +1189,9 @@ with col_p:
         _postal_fmt = to_fullwidth_postal(postal.strip())
         if _postal_fmt != postal.strip():
             st.caption(f"📮 自動変換して生成します：{_postal_fmt}")
-    # 7桁になったら郵便番号APIで住所を自動取得
-    _zip_digits = ''.join(c for c in postal if c.isdigit())
+    # 7桁になったら郵便番号APIで住所を自動取得（全角数字を半角に正規化してから抽出）
+    _zip_norm = postal.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+    _zip_digits = ''.join(c for c in _zip_norm if c.isdigit())
     if len(_zip_digits) == 7 and st.session_state.get('_last_zip') != _zip_digits:
         _z1, _z2, _z3 = lookup_address_by_zip(_zip_digits)
         if _z1:
@@ -1271,9 +1273,11 @@ with col_br:
     )
     # 支店名が入力されたら電話番号検索ボタンを表示
     if branch.strip():
-        if st.button("📞　電話番号を自動取得", key='btn_lookup_phone'):
-            with st.spinner(f"「{branch.strip()}支店」の電話番号を検索中…（初回は少し時間がかかります）"):
-                _found_phone = lookup_branch_phone(branch.strip())
+        if st.button("📞 電話番号を自動取得 (β)", key='btn_lookup_phone'):
+            _br = branch.strip()
+            _br_disp = _br if _br.endswith(('支店', '出張所')) else f"{_br}支店"
+            with st.spinner(f"「{_br_disp}」の電話番号を検索中…（初回は少し時間がかかります）"):
+                _found_phone = lookup_branch_phone(_br)
             if _found_phone:
                 st.session_state['_phone_input'] = normalize_phone(_found_phone)
                 st.success(f"✅ 取得しました：{_found_phone}")
