@@ -1,49 +1,65 @@
 """
 電気ご使用量のお知らせ（中部電力ミライズ形式）生成ツール — Streamlit Web アプリ
-フォント: IPAexGothic（または IPAexMincho にフォールバック）
+フォント: IPAexMincho（または IPAexGothic にフォールバック）
+パスワード: Streamlit Cloud Secrets の APP_PASSWORD のみ — ソースコードに記載禁止
 """
 
 import glob as _glob
 import hmac
 import io
 import os
-import re as _re
-import secrets as _secrets
 import streamlit as st
 from datetime import date, timedelta
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
-# ── ページサイズ ───────────────────────────────────────────────────
-PAGE_W, PAGE_H = 595, 842   # A4
+# ── ページサイズ ─────────────────────────────────────────────────
+PAGE_W, PAGE_H = 595, 842  # A4
 
-# ── カラーパレット (R,G,B / 0.0–1.0) ──────────────────────────────
-_C_GREEN     = (0.17, 0.49, 0.27)   # 濃い緑: 枠線・ラベル
-_C_LT_GREEN  = (0.93, 0.97, 0.90)   # 薄い緑: コンテンツ背景
-_C_BEIGE     = (0.96, 0.90, 0.74)   # ベージュ: ヘッダーセル
-_C_ORANGE    = (0.97, 0.76, 0.52)   # オレンジ: お名前ボックス
-_C_TOP_BAR   = (0.97, 0.91, 0.76)   # 上部バー色
-_C_BLACK     = (0.0, 0.0, 0.0)
-_C_WHITE     = (1.0, 1.0, 1.0)
+# ── カラーパレット (RGB 0.0–1.0) ─────────────────────────────────
+_C_GREEN    = (0.0,   0.69,  0.314)   # 緑: 線・ラベル
+_C_LT_GREEN = (0.893, 0.954, 0.828)   # 薄緑: ボックス背景
+_C_BEIGE    = (1.0,   0.938, 0.75)    # ベージュ: ヘッダー
+_C_GRAY     = (0.937, 0.937, 0.937)   # グレー: タイトルボックス
+_C_BLACK    = (0.0,   0.0,   0.0)
 
 APP_TITLE = "電気ご使用量のお知らせ（中部電力ミライズ形式）"
 
-# ── フォント ───────────────────────────────────────────────────────
+# ── 全角変換 ─────────────────────────────────────────────────────
+_FW  = str.maketrans('0123456789,', '０１２３４５６７８９，')
+_FWD = str.maketrans('0123456789',  '０１２３４５６７８９')
+
+def _fw_yen(n: int) -> str:
+    """3413 → '３，４１３円'"""
+    return f'{n:,}'.translate(_FW) + '円'
+
+def _fw_yen_sen(yen: int, sen: int) -> str:
+    """(963,42) → '９６３円　４２銭'"""
+    return str(yen).translate(_FWD) + '円　' + f'{sen:02d}'.translate(_FWD) + '銭'
+
+def _fw_yen_sen_ns(yen: int, sen: int) -> str:
+    """(115,92) → '１１５円９２銭' (no space — inline in label)"""
+    return str(yen).translate(_FWD) + '円' + f'{sen:02d}'.translate(_FWD) + '銭'
+
+def _fw_sen(sen: int) -> str:
+    return f'{sen:02d}'.translate(_FWD) + '銭'
+
+# ── フォント ─────────────────────────────────────────────────────
 def _find_font_jp() -> str:
     for pat in [
-        '/usr/share/fonts/**/*ipaexg*.ttf',
-        '/usr/share/fonts/**/*IPAexGothic*.ttf',
         '/usr/share/fonts/**/*ipaexm*.ttf',
         '/usr/share/fonts/**/*IPAexMincho*.ttf',
+        '/usr/share/fonts/**/*ipaexg*.ttf',
+        '/usr/share/fonts/**/*IPAexGothic*.ttf',
     ]:
         hits = sorted(_glob.glob(pat, recursive=True))
         if hits:
             return hits[0]
-    return os.path.join(os.path.dirname(__file__), "IBMPlexSansJP-Regular.ttf")
+    return os.path.join(os.path.dirname(__file__), 'IBMPlexSansJP-Regular.ttf')
 
 _FONT_PATH = _find_font_jp()
-_FONT_REG = False
+_FONT_REG  = False
 
 def _ensure_font():
     global _FONT_REG
@@ -53,52 +69,61 @@ def _ensure_font():
 
 FJ = 'FJ'
 
-# ── 描画ヘルパー ───────────────────────────────────────────────────
-def _fill_rect(c, x, y, w, h, fc, sc=None, lw=0.5):
-    c.setFillColorRGB(*fc)
-    if sc:
-        c.setStrokeColorRGB(*sc)
-        c.setLineWidth(lw)
-        c.rect(x, y, w, h, fill=1, stroke=1)
-    else:
-        c.rect(x, y, w, h, fill=1, stroke=0)
+# ══════════════════════════════════════════════════════════════
+# 描画ユーティリティ
+# 座標系: pdfplumber 準拠 (top = ページ上端からの距離)
+# bottom 値をベースライン近似として使用
+# ══════════════════════════════════════════════════════════════
+def _ry(top):
+    """pdfplumber top → reportlab y"""
+    return PAGE_H - top
 
-def _border_rect(c, x, y, w, h, sc, lw=0.7):
-    c.setStrokeColorRGB(*sc)
-    c.setLineWidth(lw)
-    c.rect(x, y, w, h, fill=0, stroke=1)
-
-def _txt(c, x, y, s, sz=8, col=None, align='left'):
+def _tsb(c, x, bottom, text, sz, col=None, align='left'):
+    """テキスト描画 (bottom = pdfplumber の glyph 下端)"""
     if col is None:
         col = _C_BLACK
     c.setFont(FJ, sz)
     c.setFillColorRGB(*col)
-    s = str(s)
+    rl_y = PAGE_H - bottom          # CJK: ベースライン ≈ glyph 下端
+    s = str(text)
     if align == 'right':
-        c.drawRightString(x, y, s)
+        c.drawRightString(x, rl_y, s)
     elif align == 'center':
-        c.drawCentredString(x, y, s)
+        c.drawCentredString(x, rl_y, s)
     else:
-        c.drawString(x, y, s)
+        c.drawString(x, rl_y, s)
 
-def _hline(c, x1, y, x2, col=None, lw=0.4):
-    if col is None:
-        col = _C_GREEN
-    c.setStrokeColorRGB(*col)
-    c.setLineWidth(lw)
-    c.line(x1, y, x2, y)
+def _hl(c, x1, top, x2, lw=1.08, col=None):
+    if col is None: col = _C_GREEN
+    c.setStrokeColorRGB(*col); c.setLineWidth(lw)
+    c.line(x1, _ry(top), x2, _ry(top))
 
-def _vline(c, x, y1, y2, col=None, lw=0.4):
-    if col is None:
-        col = _C_GREEN
-    c.setStrokeColorRGB(*col)
-    c.setLineWidth(lw)
-    c.line(x, y1, x, y2)
+def _vl(c, x, top1, top2, lw=1.08, col=None):
+    if col is None: col = _C_GREEN
+    c.setStrokeColorRGB(*col); c.setLineWidth(lw)
+    c.line(x, _ry(top1), x, _ry(top2))
+
+def _fill(c, x0, top, x1, bottom, fill):
+    c.setFillColorRGB(*fill)
+    c.rect(x0, _ry(bottom), x1-x0, bottom-top, fill=1, stroke=0)
+
+def _rr_fill(c, x0, top, x1, bottom, fill, r=4, stroke_col=None, sw=1.08):
+    """角丸矩形 塗りつぶし"""
+    c.setFillColorRGB(*fill)
+    if stroke_col:
+        c.setStrokeColorRGB(*stroke_col); c.setLineWidth(sw)
+    c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r,
+                fill=1, stroke=1 if stroke_col else 0)
+
+def _rr_outline(c, x0, top, x1, bottom, col, sw=1.08, r=4):
+    """角丸矩形 外枠のみ"""
+    c.setStrokeColorRGB(*col); c.setLineWidth(sw)
+    c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r, fill=0, stroke=1)
 
 
-# ══════════════════════════════════════════════════════════════════
-# PDF 生成メイン
-# ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
+# PDF 生成
+# ══════════════════════════════════════════════════════════════
 def generate_pdf(d: dict) -> bytes:
     _ensure_font()
     buf = io.BytesIO()
@@ -109,219 +134,289 @@ def generate_pdf(d: dict) -> bytes:
 
 
 def _draw(c, d):
-    # ── ① 上部カラーバー (y=820~842) ───────────────────────────
-    _fill_rect(c, 0, 820, PAGE_W, 22, _C_TOP_BAR)
-    _txt(c, 20, 826, 'おなまえ', 7, _C_GREEN)
-    _txt(c, 578, 826, '中部電力ミライズ株式会社', 9.5, _C_GREEN, 'right')
+    # ─── 1. タイトル グレーボックス ──────────────────────────
+    _fill(c, 13.1, 31.8, 284.4, 51.4, _C_GRAY)
+    c.setStrokeColorRGB(0, 0, 0); c.setLineWidth(0.18)
+    c.rect(13.1, _ry(51.4), 284.4-13.1, 51.4-31.8, fill=0, stroke=1)
 
-    # ── ② お名前ボックス (y=806~820) ──────────────────────────
-    _fill_rect(c, 155, 807, 285, 13, _C_ORANGE)
-    _txt(c, 297, 810, f'{d["name"]}　様', 9, _C_BLACK, 'center')
+    # 個別文字を等間隔に配置 (bottom=48.5)
+    _TITLE = [('電',14.0),('気',39.3),('ご',64.5),('使',89.7),
+              ('用',114.9),('量',140.1),('の',165.3),('お',190.6),
+              ('知',215.8),('ら',241.0),('せ',266.2)]
+    for ch, x0 in _TITLE:
+        _tsb(c, x0, 48.5, ch, 13)
 
-    # ── ③ ヘッダーテーブル (y=748~806) ────────────────────────
-    # 外枠
-    _fill_rect(c, 15, 748, 565, 58, _C_WHITE, _C_GREEN, 0.8)
+    # ─── 2. 発行日 ─────────────────────────────────────────
+    _tsb(c, 453.8, 71.7, d['issue_date_str'], 8)
 
-    # 上段ラベル行 (y=789~806, h=17)
-    _fill_rect(c, 15, 789, 565, 17, _C_BEIGE)
-    _hline(c, 15, 789, 580, _C_GREEN, 0.5)
-    _hline(c, 15, 771, 580, _C_GREEN, 0.5)
-    _hline(c, 15, 748, 580, _C_GREEN, 0.5)
+    # ─── 3. 挨拶文 ─────────────────────────────────────────
+    _tsb(c, 21.2,  89.7, '毎度お引立ていただきありがとうございます。', 8)
+    _tsb(c, 209.2, 89.7, f'{d["target_year"]}年{d["target_month"]}月分', 8)
+    _tsb(c, 297.0, 89.7, 'の電気ご使用量を下記のとおりお知らせいたします。', 8)
 
-    # ヘッダー縦区切り
-    for x in [225, 310, 398, 468, 530]:
-        _vline(c, x, 748, 806, _C_GREEN, 0.4)
+    # ─── 4. おなまえ ────────────────────────────────────────
+    for ch, x0 in [('お',14.0),('な',27.8),('ま',41.6),('え',55.4)]:
+        _tsb(c, x0, 112.7, ch, 7, _C_GREEN)
+    _tsb(c, 70.9, 112.7, f'{d["name"]}　様', 8)
 
-    _txt(c, 120, 793, 'お客さま番号', 7, _C_GREEN, 'center')
-    _txt(c, 267, 793, '日程', 7, _C_GREEN, 'center')
-    _txt(c, 353, 793, '契約種別', 7, _C_GREEN, 'center')
-    _txt(c, 433, 793, '契約容量', 7, _C_GREEN, 'center')
-    _txt(c, 499, 793, '力率', 7, _C_GREEN, 'center')
+    # ─── 5–9. 各セクション ───────────────────────────────
+    _draw_customer_table(c, d)
+    _draw_usage_billing(c, d)
+    _draw_billing_detail(c, d)
+    _draw_left_panel(c, d)
+    _draw_bottom_info(c, d)
 
-    # データ行 (y=771~789)
-    _txt(c, 120, 775, d.get('customer_no', ''), 8, _C_BLACK, 'center')
-    _txt(c, 267, 775, d.get('schedule', ''), 7, _C_BLACK, 'center')
-    _txt(c, 353, 775, d.get('contract_type', '従量電灯Ｂ'), 7, _C_BLACK, 'center')
+    # ─── 10. ご使用場所 ──────────────────────────────────
+    _tsb(c, 14.0, 766.7, '[ご使用場所]', 7, _C_GREEN)
+    _tsb(c, 21.2, 778.2, d['address1'], 7)
+    _tsb(c, 21.2, 789.7, d['address2'], 7)
+
+
+# ── お客さま情報テーブル ──────────────────────────────────────
+def _draw_customer_table(c, d):
+    # ベージュ角丸ヘッダー
+    _rr_fill(c, 11.34, 124.88, 110.52, 138.56, _C_BEIGE, r=4)
+    _rr_fill(c, 129.78, 124.88, 577.98, 138.56, _C_BEIGE, r=4)
+
+    # 緑の角丸外枠
+    _rr_outline(c, 11.34, 124.88, 577.98, 184.64, _C_GREEN, sw=1.08, r=4)
+
+    # 水平線
+    _hl(c, 11.3,  138.6, 578.0, lw=1.08)
+    _hl(c, 11.3,  161.6, 578.0, lw=1.08)
+
+    # 厚い縦区切り (2行目まで)
+    for x in [110.5, 129.8, 323.5, 372.2, 406.6]:
+        _vl(c, x, 124.9, 161.6, lw=1.08)
+
+    # 細い縦区切り: お客さま番号の桁
+    for x in [34.2, 64.8, 80.1, 95.2, 103.0]:
+        _vl(c, x, 138.6, 161.6, lw=0.36)
+
+    # 細い縦区切り: 供給地点特定番号の桁
+    for x in [423.5, 454.3, 484.6, 514.8, 545.8]:
+        _vl(c, x, 138.6, 161.6, lw=0.36)
+
+    # ── 行 1: ヘッダーラベル (bottom=135.8) ──────────────
+    B1 = 135.8
+    _tsb(c, 21.2,  B1, 'お', 7, _C_GREEN)
+    _tsb(c, 34.9,  B1, '客', 7, _C_GREEN)
+    _tsb(c, 48.6,  B1, 'さ', 7, _C_GREEN)
+    _tsb(c, 62.3,  B1, 'ま', 7, _C_GREEN)
+    _tsb(c, 76.0,  B1, '番', 7, _C_GREEN)
+    _tsb(c, 89.6,  B1, '号', 7, _C_GREEN)
+    _tsb(c, 113.4, B1, '日程', 7, _C_GREEN)
+    _tsb(c, 187.9, B1, '契', 7, _C_GREEN)
+    _tsb(c, 209.3, B1, '約', 7, _C_GREEN)
+    _tsb(c, 230.6, B1, '種', 7, _C_GREEN)
+    _tsb(c, 252.0, B1, '別', 7, _C_GREEN)
+    _tsb(c, 333.4, B1, '契約容量', 7, _C_GREEN)
+    _tsb(c, 379.3, B1, '力', 7, _C_GREEN)
+    _tsb(c, 389.7, B1, '率', 7, _C_GREEN)
+    _tsb(c, 443.0, B1, '供', 7, _C_GREEN)
+    _tsb(c, 454.9, B1, '給', 7, _C_GREEN)
+    _tsb(c, 466.7, B1, '地', 7, _C_GREEN)
+    _tsb(c, 478.6, B1, '点', 7, _C_GREEN)
+    _tsb(c, 490.5, B1, '特', 7, _C_GREEN)
+    _tsb(c, 502.4, B1, '定', 7, _C_GREEN)
+    _tsb(c, 514.3, B1, '番', 7, _C_GREEN)
+    _tsb(c, 526.1, B1, '号', 7, _C_GREEN)
+
+    # ── 行 2: データ (bottom=157.0) ───────────────────────
+    B2 = 157.0
+    _tsb(c, 12.1,  B2, d['customer_no'],   7)
+    _tsb(c, 113.4, B2, d['schedule'],       7)
+    _tsb(c, 131.0, B2, d['contract_type'],  7)
     cap = d.get('contract_capacity', '')
-    _txt(c, 433, 775, f'{cap}Ａ' if cap else '', 7, _C_BLACK, 'center')
-    _txt(c, 499, 775, d.get('power_factor', ''), 7, _C_BLACK, 'center')
+    if cap:
+        _tsb(c, 326.2, B2, f'  {cap}Ａ', 7)
+    pf = d.get('power_factor', '')
+    if pf:
+        _tsb(c, 375.8, B2, pf, 7)
+    _tsb(c, 409.5, B2, d['supply_point_id'], 7)
 
-    # 下段（記事・検針日）(y=748~771)
-    _fill_rect(c, 15, 748, 210, 23, _C_BEIGE)
-    _fill_rect(c, 310, 748, 88, 23, _C_BEIGE)
-    _txt(c, 120, 755, '記事', 7, _C_GREEN, 'center')
-    _txt(c, 354, 755, '検針日', 7, _C_GREEN, 'center')
-    _txt(c, 402, 755, d.get('meter_read_date', ''), 8, _C_BLACK)
-    _vline(c, 310, 748, 771, _C_GREEN, 0.4)
+    # ── 行 3: 縦区切り + 検針日等 ─────────────────────────
+    for x in [72.9, 201.6, 244.6]:
+        _vl(c, x, 161.6, 184.6, lw=1.08)
 
-    # ── ④ メインコンテンツボックス (y=90~748) ─────────────────
-    _border_rect(c, 15, 90, 565, 658, _C_GREEN, 0.8)
-    _vline(c, 362, 90, 748, _C_GREEN, 0.5)  # 左右分割
+    B3h = 170.3   # ヘッダー bottom
+    B3d = 180.0   # データ bottom
+    _tsb(c, 14.0,  B3h, '検針日',     7, _C_GREEN)
+    _tsb(c, 77.9,  B3h, 'ご使用期間', 7, _C_GREEN)
+    _tsb(c, 205.6, B3h, 'ご使用日数', 7, _C_GREEN)
+    _tsb(c, 248.2, B3h, '記事',       7, _C_GREEN)
 
-    # ── ⑤ 左パネル ─────────────────────────────────────────────
-    _draw_left(c, d)
-
-    # ── ⑥ 右パネル ─────────────────────────────────────────────
-    _draw_right(c, d)
-
-    # ── ⑦ 下部 ─────────────────────────────────────────────────
-    _draw_bottom(c, d)
-
-
-def _draw_left(c, d):
-    """左パネル (x=15~362, y=90~748)"""
-    LX, RX = 15, 362
-
-    # タイトルエリア (y=718~748, h=30)
-    _fill_rect(c, LX, 718, RX - LX, 30, _C_LT_GREEN)
-    _hline(c, LX, 718, RX, _C_GREEN, 0.5)
-    _txt(c, (LX+RX)//2, 730, '電気ご使用量のお知らせ', 11, _C_GREEN, 'center')
-    _txt(c, (LX+RX)//2, 721, d.get('issue_date_str', ''), 7.5, _C_BLACK, 'center')
-
-    # 対象期間テキスト (y=695~718, h=23)
-    _fill_rect(c, LX, 695, RX - LX, 23, _C_LT_GREEN)
-    _hline(c, LX, 695, RX, _C_GREEN, 0.5)
-    yr = d.get('target_year', '')
-    mo = d.get('target_month', '')
-    _txt(c, LX+5, 709, f'{yr}年{mo}月分 の電気ご使用量を下記のとおりお知らせいたします。', 7, _C_BLACK)
-
-    # ご使用情報 (y=655~695, h=40)
-    _hline(c, LX, 655, RX, _C_GREEN, 0.5)
-    _txt(c, LX+8, 682, 'ご使用期間', 7, _C_GREEN)
-    _txt(c, LX+80, 682, d.get('usage_period', ''), 8)
-    _txt(c, LX+8, 668, 'ご使用日数', 7, _C_GREEN)
-    _txt(c, LX+80, 668, f'{d.get("usage_days", "")}日', 8)
-    _txt(c, LX+185, 668, 'ご使用量', 7, _C_GREEN)
-    _txt(c, LX+248, 668, f'{d.get("usage_kwh", "")}ｋＷｈ', 9)
-    _txt(c, LX+8, 657, f'[ご使用場所]　{d.get("address1","")}　{d.get("address2","")}', 7, _C_GREEN)
-
-    # 計器テーブル (y=543~655)
-    _hline(c, LX, 543, RX, _C_GREEN, 0.5)
-    _fill_rect(c, LX, 633, RX - LX, 22, _C_BEIGE)
-    _hline(c, LX, 633, RX, _C_GREEN, 0.4)
-    _hline(c, LX, 611, RX, _C_GREEN, 0.4)
-
-    _txt(c, LX+8, 637, f'計器番号　{d.get("meter_no","")}', 7, _C_GREEN)
-    # 第1計器
-    _fill_rect(c, LX, 543, 30, 90, _C_BEIGE)
-    _vline(c, LX+30, 543, 633, _C_GREEN, 0.3)
-    _txt(c, LX+15, 590, '第', 7, _C_GREEN, 'center')
-    _txt(c, LX+15, 580, '１', 7, _C_GREEN, 'center')
-    _txt(c, LX+15, 570, '計', 7, _C_GREEN, 'center')
-    _txt(c, LX+15, 560, '器', 7, _C_GREEN, 'center')
-
-    # 列ヘッダー
-    col_xs = [LX+30, LX+130, LX+225, RX]
-    mid_xs = [LX+80, LX+177, LX+270]
-    for mx in mid_xs:
-        _vline(c, mx + 28, 543, 633, _C_GREEN, 0.3)
-    _txt(c, LX+113, 637, '当月指示数', 7, _C_GREEN, 'center')
-    _txt(c, LX+207, 637, '前月指示数', 7, _C_GREEN, 'center')
-    _txt(c, LX+303, 637, '差引', 7, _C_GREEN, 'center')
-
-    # 指示数の縦区切り
-    _vline(c, LX+158, 543, 611, _C_GREEN, 0.3)
-    _vline(c, LX+248, 543, 611, _C_GREEN, 0.3)
-
-    # 計器データ値
-    _txt(c, LX+113, 580, str(d.get('current_reading', '')), 9, _C_BLACK, 'center')
-    _txt(c, LX+203, 580, str(d.get('prev_reading', '')), 9, _C_BLACK, 'center')
-    _txt(c, LX+295, 580, str(d.get('diff_reading', '')), 9, _C_BLACK, 'center')
-
-    # 燃料費調整単価・再エネ単価 (y=490~543)
-    _hline(c, LX, 490, RX, _C_GREEN, 0.4)
-    _txt(c, LX+8, 530, '当月燃料費調整単価（税込）', 7, _C_GREEN)
-    _txt(c, LX+185, 530, d.get('fuel_adj_unit_str', ''), 8)
-    _txt(c, LX+8, 515, '再エネ発電促進賦課金単価（税込）', 7, _C_GREEN)
-    _txt(c, LX+210, 515, d.get('renewable_unit_str', ''), 8)
-
-    # ── ご請求額内訳 (y=130~490) ──────────────────────────────
-    _hline(c, LX, 460, RX, _C_GREEN, 0.5)
-    _fill_rect(c, LX, 460, RX - LX, 18, _C_BEIGE)
-    _hline(c, LX, 460, RX, _C_GREEN, 0.5)
-    _txt(c, (LX+RX)//2, 465, '［ご請求額内訳］', 8, _C_GREEN, 'center')
-
-    # 各行
-    rows = [
-        (440, '基本料金', 'basic_yen', 'basic_sen'),
-        (416, '電力量料金　１段料金', 'energy1_yen', 'energy1_sen'),
-        (392, '再エネ発電促進賦課金', 'renewable_yen', None),
-    ]
-    for (ry, label, yen_key, sen_key) in rows:
-        _hline(c, LX, ry, RX, _C_GREEN, 0.3)
-        _txt(c, LX+10, ry + 6, label, 8)
-        yen = d.get(yen_key, 0)
-        if sen_key:
-            sen = d.get(sen_key, 0)
-            _txt(c, RX - 8, ry + 6, f'{yen:,}円　{sen:02d}銭', 8, _C_BLACK, 'right')
-        else:
-            _txt(c, RX - 8, ry + 6, f'{yen:,}円', 8, _C_BLACK, 'right')
-
-    # うち燃料費調整額（小さい文字・インデント）
-    _hline(c, LX, 370, RX, _C_GREEN, 0.3)
-    _txt(c, LX+18, 376, 'うち燃料費調整額', 7)
-    fy = d.get('fuel_adj_yen', 0)
-    fs = d.get('fuel_adj_sen', 0)
-    _txt(c, RX - 8, 376, f'{fy:,}円{fs:02d}銭', 7, _C_BLACK, 'right')
-
-    _hline(c, LX, 346, RX, _C_GREEN, 0.5)
+    # データ: 各列センタリング
+    cx1 = (11.34 + 72.9) / 2     # 42.1
+    cx2 = (72.9 + 201.6) / 2     # 137.2
+    cx3 = (201.6 + 244.6) / 2    # 223.1
+    _tsb(c, cx1, B3d, d['meter_read_date'],         7, align='center')
+    _tsb(c, cx2, B3d, d['usage_period'],             7, align='center')
+    _tsb(c, cx3, B3d, d['usage_days'] + '日',        7, align='center')
 
 
-def _draw_right(c, d):
-    """右パネル (x=362~580, y=90~748)"""
-    LX, RX = 362, 580
-    CX = (LX + RX) // 2  # = 471
+# ── ご使用量・ご請求額ボックス ────────────────────────────────
+def _draw_usage_billing(c, d):
+    # 左の薄緑角丸ボックス
+    _rr_fill(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=6)
+    # 右の薄緑角丸ボックス
+    _rr_fill(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=6)
 
-    # 請求額エリア (y=640~748, h=108)
-    _fill_rect(c, LX, 640, RX - LX, 108, _C_LT_GREEN)
-    _hline(c, LX, 640, RX, _C_GREEN, 0.5)
+    # ご使用量 (bottom=200.6)
+    _tsb(c, 14.0,  200.6, 'ご使用量', 7, _C_GREEN)
+    _tsb(c, 309.4, 200.6, d['usage_kwh'] + 'ｋＷｈ', 7, align='right')
 
-    # ご請求額 ラベル・金額
-    _txt(c, CX, 730, 'ご請求額', 9, _C_GREEN, 'center')
-    billing = d.get('billing_amount', 0)
-    _txt(c, CX, 704, f'{billing:,}円', 16, _C_BLACK, 'center')
-    tax = d.get('tax_amount', 0)
-    _txt(c, CX, 688, f'うち消費税等相当額　{tax:,}円', 7.5, _C_BLACK, 'center')
-    _txt(c, CX, 676, f'うち燃料費調整額　{d.get("fuel_adj_total_str","")}', 7, _C_BLACK, 'center')
+    # ご請求額 (bottom=203.1)
+    B_r1 = 203.1
+    _tsb(c, 364.0, B_r1, 'ご請求額', 7, _C_GREEN)
+    _tsb(c, 563.4, B_r1, _fw_yen(d['billing_amount']), 7, align='right')
 
-    # 翌月ご案内ヘッダー (y=618~640)
-    _fill_rect(c, LX, 618, RX - LX, 22, _C_LT_GREEN)
-    _hline(c, LX, 618, RX, _C_GREEN, 0.5)
+    # うち消費税等相当額 (bottom=214.6)
+    B_r2 = 214.6
+    _tsb(c, 364.0, B_r2, 'うち消費税等相当額', 7, _C_GREEN)
+    _tsb(c, 563.4, B_r2, _fw_yen(d['tax_amount']),    7, align='right')
+
+    # 右パネル仕切り線
+    _hl(c, 363.4, 236.5, 578.0, lw=0.72)
+
+
+# ── ご請求額内訳 (右パネル) ───────────────────────────────────
+def _draw_billing_detail(c, d):
+    B_hd = 249.2
+    _tsb(c, 364.0, B_hd, '［ご請求額内訳］', 7, _C_GREEN)
+
+    # 基本料金 (bottom=261.0)
+    B1 = 261.0
+    _tsb(c, 366.7, B1, '基本料金', 7)
+    _tsb(c, 550.3, B1, _fw_yen(d['basic_yen']),      7, align='right')
+    _tsb(c, 553.3, B1, _fw_sen(d['basic_sen']),       7)
+
+    # 電力量料金 1段料金 (bottom=272.0)
+    B2 = 272.0
+    _tsb(c, 366.7, B2, '電力量料金　１段料金', 7)
+    _tsb(c, 550.3, B2, _fw_yen(d['energy1_yen']),    7, align='right')
+    _tsb(c, 553.3, B2, _fw_sen(d['energy1_sen']),     7)
+
+    # うち燃料費調整額 (bottom=284.3)
+    B3 = 284.3
+    fuel_str = ('うち燃料費調整額　'
+                + _fw_yen_sen_ns(d['fuel_adj_yen'], d['fuel_adj_sen']))
+    _tsb(c, 366.5, B3, fuel_str, 7)
+
+    # 再エネ発電促進賦課金 (bottom=295.1)
+    B4 = 295.1
+    _tsb(c, 366.7, B4, '再エネ発電促進賦課金', 7)
+    _tsb(c, 550.3, B4, _fw_yen(d['renewable_yen']),  7, align='right')
+
+
+# ── 左パネル（計器セクション + グリッド線） ──────────────────
+# 計器表示セル x 座標 (column 1: x=65→127.8)
+_METER_CELLS = [67.7, 73.0, 78.4, 83.8, 89.1,
+                94.5, 99.8, 105.2, 110.6, 115.9, 121.3]
+
+def _draw_meter_digits(c, reading_str, bottom):
+    """指示数をセル単位で描画 (半角 sz=7)"""
+    if '.' in reading_str:
+        int_s, dec_s = reading_str.split('.', 1)
+    else:
+        int_s, dec_s = reading_str, '0'
+
+    sz = 7
+    # 整数部: cells 0-7 右寄せ
+    start = 8 - len(int_s)
+    for i, ch in enumerate(int_s):
+        ci = start + i
+        if 0 <= ci < 8:
+            _tsb(c, _METER_CELLS[ci], bottom, ch, sz)
+    # 小数点: cell 8
+    _tsb(c, _METER_CELLS[8], bottom, '.', sz)
+    # 小数部: cells 9-10
+    for i, ch in enumerate(dec_s[:2]):
+        _tsb(c, _METER_CELLS[9 + i], bottom, ch, sz)
+
+
+def _draw_left_panel(c, d):
+    # ── 主要水平線 ───────────────────────────────────────
+    _hl(c, 11.3,  276.3, 360.4, lw=1.08)
+    _hl(c, 10.4,  287.4, 360.0, lw=0.72)
+    _hl(c, 10.8,  356.9, 360.0, lw=0.72)
+    _hl(c, 11.0,  370.4, 360.0, lw=0.72)
+    _hl(c, 10.8,  408.6, 359.3, lw=0.36)
+    _hl(c, 10.8,  444.7, 359.3, lw=0.36)
+    _hl(c, 10.8,  483.8, 359.8, lw=1.08)
+    _hl(c, 10.8,  496.0, 360.0, lw=0.72)
+    _hl(c, 10.8,  561.9, 360.0, lw=0.72)
+    _hl(c, 10.8,  575.6, 360.0, lw=0.72)
+    _hl(c, 10.8,  613.8, 243.9, lw=0.36)
+    _hl(c, 10.8,  650.1, 243.9, lw=0.36)
+
+    # ── 主要縦区切り (全体) ──────────────────────────────
+    _vl(c, 127.8, 276.3, 690.1, lw=1.08)
+    _vl(c, 243.9, 276.3, 690.1, lw=1.08)
+
+    # ── 上部セクション縦区切り (top=276.3→356.9) ──────
+    _vl(c,  65.0, 276.3, 356.9, lw=0.36)
+    _vl(c, 181.6, 275.7, 357.6, lw=0.36)
+    _vl(c, 296.1, 276.3, 356.9, lw=0.36)
+
+    # ── 計器表示縦区切り (top=483.4→562.1) ───────────
+    _vl(c,  65.0, 483.4, 562.1, lw=0.36)
+    _vl(c, 181.6, 483.4, 562.1, lw=0.36)
+    _vl(c, 296.1, 483.4, 562.1, lw=0.36)
+
+    # ── 計器セクション ────────────────────────────────
+    B_k = 286.1
+    _tsb(c, 14.0,  B_k, f'計器番号{d["meter_no"]}', 7, _C_GREEN)
+    _tsb(c, 71.8,  B_k, '第', 7, _C_GREEN)
+    _tsb(c, 85.5,  B_k, '１', 7, _C_GREEN)
+    _tsb(c, 99.2,  B_k, '計', 7, _C_GREEN)
+    _tsb(c, 112.9, B_k, '器', 7, _C_GREEN)
+
+    _tsb(c, 14.0, 296.9, '当月指示数', 7, _C_GREEN)
+    _draw_meter_digits(c, d['current_reading'], 296.9)
+
+    _tsb(c, 14.0, 308.4, '前月指示数', 7, _C_GREEN)
+    _draw_meter_digits(c, d['prev_reading'], 308.4)
+
+    _tsb(c, 14.0, 319.9, '差引', 7, _C_GREEN)
+    _draw_meter_digits(c, d['diff_reading'], 319.9)
+
+
+# ── 単価情報・翌月ご案内 ──────────────────────────────────────
+def _draw_bottom_info(c, d):
+    # 当月燃料費調整単価 (bottom=689.3)
+    B1 = 689.3
+    _tsb(c, 369.2, B1, '当月燃料費調整単価（税込）', 7, _C_GREEN)
+    _tsb(c, 518.9, B1, str(d['fuel_adj_unit_yen']).translate(_FWD) + '円', 7, align='right')
+    _tsb(c, 522.0, B1, f'{d["fuel_adj_unit_sen"]:02d}'.translate(_FWD) + '銭／ｋＷｈ', 7)
+
+    # 再エネ発電促進賦課金単価 (bottom=697.7)
+    B2 = 697.7
+    _tsb(c, 369.2, B2, '再エネ発電促進賦課金単価（税込）', 7, _C_GREEN)
+    _tsb(c, 518.9, B2, str(d['renewable_unit_yen']).translate(_FWD) + '円', 7, align='right')
+    _tsb(c, 522.0, B2, f'{d["renewable_unit_sen"]:02d}'.translate(_FWD) + '銭／ｋＷｈ', 7)
+
+    # 翌月（）のご案内 (bottom=714.5)
+    B3 = 714.5
     nm = d.get('next_month_label', '')
-    _txt(c, LX + 6, 626, f'翌月（{nm}月分）のご案内', 8, _C_GREEN)
+    _tsb(c, 371.9, B3, f'翌月（　{nm}月分）のご案内', 7, _C_GREEN)
 
-    # 翌月情報 (y=540~618)
-    _hline(c, LX, 540, RX, _C_GREEN, 0.4)
-    _txt(c, LX+6, 603, '検針日', 7, _C_GREEN)
-    _txt(c, LX+50, 603, d.get('next_meter_read_date', ''), 8)
+    # 翌月 検針日・ご使用期間 (bottom=728.5)
+    B4 = 728.5
+    _tsb(c, 371.9, B4, '検針日',       7, _C_GREEN)
+    _tsb(c, 409.5, B4, d['next_meter_read_date'], 7)
+    _tsb(c, 449.3, B4, 'ご使用期間',  7, _C_GREEN)
+    _tsb(c, 506.9, B4, d['next_usage_period'],     7)
 
-    _txt(c, LX+6, 588, 'ご使用期間', 7, _C_GREEN)
-    _txt(c, LX+65, 588, d.get('next_usage_period', ''), 8)
-
-    _txt(c, LX+6, 570, '燃料費調整単価（税込）', 7, _C_GREEN)
-    _txt(c, LX+6, 558, d.get('next_fuel_adj_unit_str', ''), 8)
-
-
-def _draw_bottom(c, d):
-    """下部エリア（ご使用場所・供給地点特定番号）"""
-    # ご使用場所ボックス
-    _border_rect(c, 15, 48, 330, 42, _C_GREEN, 0.6)
-    _txt(c, 20, 78, '[ご使用場所]', 7, _C_GREEN)
-    _txt(c, 20, 65, d.get('address1', ''), 8)
-    _txt(c, 20, 52, d.get('address2', ''), 8)
-
-    # 供給地点特定番号ボックス
-    _border_rect(c, 350, 48, 230, 42, _C_GREEN, 0.6)
-    _txt(c, 355, 78, '供給地点特定番号', 7, _C_GREEN)
-    _txt(c, 355, 62, d.get('supply_point_id', ''), 7.5)
-
-    # メインボックス外枠との区切り線
-    _hline(c, 15, 90, 580, _C_GREEN, 0.8)
+    # 翌月 燃料費調整単価 (bottom=739.5)
+    B5 = 739.5
+    _tsb(c, 371.9, B5, '燃料費調整単価（税込）', 7, _C_GREEN)
+    _tsb(c, 476.5, B5, d['next_fuel_adj_unit_str'], 7)
 
 
-# ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 # 認証
-# ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 def _check_password() -> bool:
     if st.session_state.get('_authenticated'):
         return True
@@ -340,9 +435,9 @@ def _check_password() -> bool:
     return False
 
 
-# ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 # Streamlit UI
-# ══════════════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════
 st.set_page_config(page_title=APP_TITLE, layout='centered')
 st.title('⚡ ' + APP_TITLE)
 st.caption('中部電力ミライズ形式の電気ご使用量のお知らせPDFを生成します')
@@ -353,14 +448,14 @@ if not _check_password():
 
 today = date.today()
 
-# ── ① 基本情報 ─────────────────────────────────────────────────
+# ── ① 基本情報 ─────────────────────────────────────────────
 st.subheader('① 基本情報')
 col1, col2 = st.columns([1, 1])
 with col1:
     name = st.text_input('おなまえ', value='前田　篤志',
                          help='姓と名の間に全角スペースを入れてください')
     customer_no = st.text_input('お客さま番号', value='１１０３９７３０２００５０',
-                                help='全角数字で入力（スペース区切り可）')
+                                help='全角数字で入力')
 with col2:
     contract_type = st.selectbox('契約種別',
         ['従量電灯Ｂ', '従量電灯Ｃ', '低圧電力', 'スマートライフプラン', 'その他'],
@@ -370,86 +465,87 @@ with col2:
 col3, col4 = st.columns([1, 1])
 with col3:
     meter_no = st.text_input('計器番号', value='０４６')
-    schedule = st.text_input('日程', value='０８',
-                             help='検針スケジュール番号（任意）')
+    schedule = st.text_input('日程', value='０８', help='検針スケジュール番号')
 with col4:
-    power_factor = st.text_input('力率', value='',
-                                 help='低圧電力等の場合に記入（任意）')
+    power_factor = st.text_input('力率', value='', help='低圧電力等の場合に記入（任意）')
     supply_point_id = st.text_input('供給地点特定番号',
                                     value='０４０１１０３９７３０２００５０００００００')
 
 st.markdown('---')
 
-# ── ② 日程・期間 ───────────────────────────────────────────────
+# ── ② 日程・期間 ──────────────────────────────────────────
 st.subheader('② 日程・期間')
 col5, col6 = st.columns([1, 1])
 with col5:
-    issue_date = st.date_input('発行日', value=today)
-    target_ym = st.date_input('対象年月（月初日で指定）',
-                              value=date(today.year, today.month, 1))
+    issue_date  = st.date_input('発行日', value=today)
+    target_ym   = st.date_input('対象年月（月初日で指定）',
+                                value=date(today.year, today.month, 1))
 with col6:
     meter_read_date = st.date_input('検針日（当月）', value=today)
     usage_start = st.date_input('ご使用期間 開始', value=today - timedelta(days=32))
     usage_end   = st.date_input('ご使用期間 終了', value=today - timedelta(days=1))
 
-# 使用日数を自動計算
 usage_days_calc = (usage_end - usage_start).days + 1 if usage_end >= usage_start else 0
-st.caption(f'📅 ご使用日数（自動計算）: **{usage_days_calc}日**　（修正する場合は下で入力）')
+st.caption(f'📅 ご使用日数（自動計算）: **{usage_days_calc}日**')
 usage_days_override = st.number_input('ご使用日数（手動修正する場合のみ）',
     min_value=0, max_value=99, value=0, step=1,
-    help='0のままにすると上の自動計算値を使用します')
+    help='0のままにすると自動計算値を使用')
 usage_days = int(usage_days_override) if usage_days_override > 0 else usage_days_calc
 
-# 表示用文字列
 def _fw_date(d_: date) -> str:
-    """date → 全角表示（例: ４月９日）"""
-    fw = str.maketrans('0123456789', '０１２３４５６７８９')
-    return str(d_.month).translate(fw) + '月' + str(d_.day).translate(fw) + '日'
+    tr = str.maketrans('0123456789', '０１２３４５６７８９')
+    return str(d_.month).translate(tr) + '月' + str(d_.day).translate(tr) + '日'
 
-usage_period_str = f'{_fw_date(usage_start)}～{_fw_date(usage_end)}'
-issue_date_str   = f'{issue_date.year}年{_fw_date(issue_date)}'
+usage_period_str = f'{_fw_date(usage_start)}〜{_fw_date(usage_end)}'
+issue_date_str   = str(issue_date.year).translate(str.maketrans('0123456789','０１２３４５６７８９')) \
+                   + '年' + _fw_date(issue_date)
 
-# 翌月ご案内
 st.markdown('---')
+
+# ── ③ 翌月ご案内 ─────────────────────────────────────────
 st.subheader('③ 翌月ご案内')
 col7, col8 = st.columns([1, 1])
 with col7:
-    next_meter_read_date = st.date_input('翌月 検針日', value=meter_read_date + timedelta(days=28))
-    next_usage_start = st.date_input('翌月 使用期間 開始', value=usage_end + timedelta(days=1))
+    next_meter_read_date = st.date_input('翌月 検針日',
+                                         value=meter_read_date + timedelta(days=28))
+    next_usage_start = st.date_input('翌月 使用期間 開始',
+                                     value=usage_end + timedelta(days=1))
 with col8:
-    next_usage_end = st.date_input('翌月 使用期間 終了', value=usage_end + timedelta(days=28))
-    next_month_label = st.text_input('翌月ご案内の月（数字）',
-                                     value=str(target_ym.month % 12 + 1))
+    next_usage_end   = st.date_input('翌月 使用期間 終了',
+                                     value=usage_end + timedelta(days=28))
+    next_month_label = st.text_input('翌月ご案内の月（全角数字）',
+                                     value=str(target_ym.month % 12 + 1).translate(
+                                         str.maketrans('0123456789','０１２３４５６７８９')))
 
-next_usage_period_str = f'{_fw_date(next_usage_start)}～{_fw_date(next_usage_end)}'
-
+next_usage_period_str = f'{_fw_date(next_usage_start)}〜{_fw_date(next_usage_end)}'
 st.markdown('---')
 
-# ── ④ 使用量・計器指示数 ─────────────────────────────────────
+# ── ④ 使用量・計器指示数 ─────────────────────────────────
 st.subheader('④ 使用量・計器指示数')
 col9, col10 = st.columns([1, 1])
 with col9:
-    usage_kwh = st.number_input('ご使用量（ｋＷｈ）', min_value=0, value=92, step=1)
-    current_reading = st.number_input('当月指示数', min_value=0.0, value=19398.6, step=0.1, format='%.1f')
+    usage_kwh       = st.number_input('ご使用量（ｋＷｈ）', min_value=0, value=92, step=1)
+    current_reading = st.number_input('当月指示数', min_value=0.0, value=19398.6,
+                                      step=0.1, format='%.1f')
 with col10:
     prev_reading_auto = round(current_reading - usage_kwh, 1)
     st.caption(f'📟 前月指示数（自動計算）: **{prev_reading_auto}**')
     prev_reading = st.number_input('前月指示数（手動修正する場合のみ）',
-                                    min_value=0.0, value=0.0, step=0.1, format='%.1f',
-                                    help='0.0のままにすると自動計算値を使用します')
+                                   min_value=0.0, value=0.0, step=0.1, format='%.1f',
+                                   help='0.0のままにすると自動計算値を使用')
     prev_reading_final = prev_reading if prev_reading > 0 else prev_reading_auto
     diff_reading = round(current_reading - prev_reading_final, 1)
 
 st.markdown('---')
 
-# ── ⑤ 請求金額 ────────────────────────────────────────────────
+# ── ⑤ 請求金額 ───────────────────────────────────────────
 st.subheader('⑤ 請求金額')
 col11, col12 = st.columns([1, 1])
 with col11:
-    billing_amount = st.number_input('ご請求額（円）', min_value=0, value=3413, step=1)
-    tax_amount     = st.number_input('うち消費税等相当額（円）', min_value=0, value=310, step=1)
+    billing_amount = st.number_input('ご請求額（円）',          min_value=0, value=3413, step=1)
+    tax_amount     = st.number_input('うち消費税等相当額（円）', min_value=0, value=310,  step=1)
 with col12:
-    basic_yen = st.number_input('基本料金（円）', min_value=0, value=963, step=1)
+    basic_yen = st.number_input('基本料金（円）', min_value=0, value=963,  step=1)
     basic_sen = st.number_input('基本料金（銭）', min_value=0, max_value=99, value=42, step=1)
 
 col13, col14 = st.columns([1, 1])
@@ -460,51 +556,41 @@ with col14:
     fuel_adj_yen = st.number_input('うち燃料費調整額（円）', min_value=0, value=115, step=1)
     fuel_adj_sen = st.number_input('うち燃料費調整額（銭）', min_value=0, max_value=99, value=92, step=1)
 
-col15, col16 = st.columns([1, 1])
+col15, _ = st.columns([1, 1])
 with col15:
     renewable_yen = st.number_input('再エネ発電促進賦課金（円）', min_value=0, value=384, step=1)
-with col16:
-    pass  # 将来拡張用
 
 st.markdown('---')
 
-# ── ⑥ 単価情報 ───────────────────────────────────────────────
+# ── ⑥ 単価情報 ──────────────────────────────────────────
 st.subheader('⑥ 単価情報')
 col17, col18 = st.columns([1, 1])
 with col17:
     fuel_adj_unit_yen = st.number_input('当月 燃料費調整単価（円）', min_value=0, value=1, step=1)
     fuel_adj_unit_sen = st.number_input('当月 燃料費調整単価（銭）', min_value=0, max_value=99, value=26, step=1)
-    renewable_unit_yen = st.number_input('再エネ発電促進賦課金単価（円）', min_value=0, value=4, step=1)
-    renewable_unit_sen = st.number_input('再エネ発電促進賦課金単価（銭）', min_value=0, max_value=99, value=18, step=1)
+    renewable_unit_yen = st.number_input('再エネ単価（円）', min_value=0, value=4, step=1)
+    renewable_unit_sen = st.number_input('再エネ単価（銭）', min_value=0, max_value=99, value=18, step=1)
 with col18:
     next_fuel_adj_yen = st.number_input('翌月 燃料費調整単価（円）', min_value=0, value=1, step=1)
     next_fuel_adj_sen = st.number_input('翌月 燃料費調整単価（銭）', min_value=0, max_value=99, value=35, step=1)
 
 st.markdown('---')
 
-# ── ⑦ ご使用場所 ──────────────────────────────────────────────
+# ── ⑦ ご使用場所 ─────────────────────────────────────────
 st.subheader('⑦ ご使用場所')
-address1 = st.text_input('住所（都道府県～番地）', value='愛知県　名古屋市　熱田区　一番　３丁目　２－３０',
-                         help='区切りに全角スペースを入れてください')
-address2 = st.text_input('建物名・部屋番号（任意）', value='市営　一番荘　３棟　２０５')
+address1 = st.text_input('住所（都道府県～番地）',
+    value='愛知県　名古屋市　熱田区　一番　３丁目　２−３０')
+address2 = st.text_input('建物名・部屋番号（任意）',
+    value='市営　一番荘　３棟　２０５')
 
 st.markdown('---')
 
-# ── ⑧ 生成 ───────────────────────────────────────────────────
-def _fw(n: int, sen: int) -> str:
-    """例: (1, 26) → '１円　２６銭'"""
-    fw = str.maketrans('0123456789', '０１２３４５６７８９')
-    return str(n).translate(fw) + '円　' + f'{sen:02d}'.translate(fw) + '銭'
+# ── ⑧ 生成 ───────────────────────────────────────────────
+_fw_tr = str.maketrans('0123456789', '０１２３４５６７８９')
 
-def _fw_unit(n: int, sen: int) -> str:
-    fw = str.maketrans('0123456789', '０１２３４５６７８９')
-    return str(n).translate(fw) + '円　' + f'{sen:02d}'.translate(fw) + '銭'
-
-# 表示用文字列の準備
-fw = str.maketrans('0123456789', '０１２３４５６７８９')
-
-fuel_adj_total_str = f'{fuel_adj_yen:,}円{fuel_adj_sen:02d}銭'.translate(
-    str.maketrans('0123456789,', '０１２３４５６７８９，'))
+# 翌月単価: "１円３５銭／ｋＷｈ" (スペースなし)
+next_fuel_adj_unit_str = (str(next_fuel_adj_yen).translate(_fw_tr) + '円'
+                          + f'{next_fuel_adj_sen:02d}'.translate(_fw_tr) + '銭／ｋＷｈ')
 
 data = dict(
     name              = name.strip(),
@@ -517,13 +603,13 @@ data = dict(
     supply_point_id   = supply_point_id.strip(),
 
     issue_date_str    = issue_date_str,
-    target_year       = str(target_ym.year).translate(fw),
-    target_month      = str(target_ym.month).translate(fw),
+    target_year       = str(target_ym.year).translate(_fw_tr),
+    target_month      = str(target_ym.month).translate(_fw_tr),
     meter_read_date   = _fw_date(meter_read_date),
 
     usage_period      = usage_period_str,
-    usage_days        = str(usage_days).translate(fw),
-    usage_kwh         = str(usage_kwh).translate(fw),
+    usage_days        = str(usage_days).translate(_fw_tr),
+    usage_kwh         = str(usage_kwh).translate(_fw_tr),
 
     current_reading   = f'{current_reading:.1f}',
     prev_reading      = f'{prev_reading_final:.1f}',
@@ -531,7 +617,6 @@ data = dict(
 
     billing_amount    = billing_amount,
     tax_amount        = tax_amount,
-    fuel_adj_total_str= fuel_adj_total_str,
 
     basic_yen         = basic_yen,
     basic_sen         = basic_sen,
@@ -541,16 +626,18 @@ data = dict(
     fuel_adj_sen      = fuel_adj_sen,
     renewable_yen     = renewable_yen,
 
-    fuel_adj_unit_str = _fw(fuel_adj_unit_yen, fuel_adj_unit_sen),
-    renewable_unit_str= _fw(renewable_unit_yen, renewable_unit_sen),
+    fuel_adj_unit_yen = fuel_adj_unit_yen,
+    fuel_adj_unit_sen = fuel_adj_unit_sen,
+    renewable_unit_yen= renewable_unit_yen,
+    renewable_unit_sen= renewable_unit_sen,
 
     next_month_label        = next_month_label.strip(),
     next_meter_read_date    = _fw_date(next_meter_read_date),
     next_usage_period       = next_usage_period_str,
-    next_fuel_adj_unit_str  = _fw(next_fuel_adj_yen, next_fuel_adj_sen),
+    next_fuel_adj_unit_str  = next_fuel_adj_unit_str,
 
-    address1          = address1.strip(),
-    address2          = address2.strip(),
+    address1 = address1.strip(),
+    address2 = address2.strip(),
 )
 
 if st.button('⚡　電気ご使用量のお知らせ PDF を生成する',
@@ -558,8 +645,6 @@ if st.button('⚡　電気ご使用量のお知らせ PDF を生成する',
     with st.spinner('PDF を生成中…'):
         pdf_bytes = generate_pdf(data)
 
-    yr_fw = str(target_ym.year).translate(fw)
-    mo_fw = str(target_ym.month).translate(fw)
     fname = f'Webmeisai{target_ym.year}{target_ym.month:02d}.pdf'
     st.download_button(
         label='📄　PDF をダウンロード',
@@ -568,4 +653,6 @@ if st.button('⚡　電気ご使用量のお知らせ PDF を生成する',
         mime='application/pdf',
         use_container_width=True,
     )
+    yr_fw = str(target_ym.year).translate(_fw_tr)
+    mo_fw = str(target_ym.month).translate(_fw_tr)
     st.success(f'✅ {yr_fw}年{mo_fw}月分の明細書を生成しました。')
