@@ -614,10 +614,8 @@ def _setup_font():
 
 
 def _ja_date(d: date) -> str:
-    """date → 「2026 年  6 月  5 日」形式（1桁の月・日は先頭スペースで2桁幅）"""
-    m   = f" {d.month}" if d.month < 10 else str(d.month)
-    day = f" {d.day}"   if d.day   < 10 else str(d.day)
-    return f"{d.year} 年 {m} 月 {day} 日"
+    """date → 「2026 年 06 月 05 日」形式（1桁の月・日はゼロ埋め2桁）"""
+    return f"{d.year} 年 {d.month:02d} 月 {d.day:02d} 日"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -961,9 +959,9 @@ def _draw_certificate(c, data: dict):
     _d = data["issue_date"]
     c.drawString(418.28, 730.70, str(_d.year))
     c.drawString(448,    730.70, "年")
-    c.drawString(464.64, 730.70, str(_d.month).rjust(2))
+    c.drawString(464.64, 730.70, f'{_d.month:02d}')
     c.drawString(481,    730.70, "月")
-    c.drawString(497.64, 730.70, str(_d.day).rjust(2))
+    c.drawString(497.64, 730.70, f'{_d.day:02d}')
     c.drawString(514,    730.70, "日")
 
     # ── 3. 住所・氏名（左）──────────────────────────────────────────────────
@@ -990,9 +988,9 @@ def _draw_certificate(c, data: dict):
     _cd = data["cert_date"]
     c.drawString(89.28,  610.70, str(_cd.year))
     c.drawString(119,    610.70, "年")
-    c.drawString(135.64, 610.70, str(_cd.month).rjust(2))
+    c.drawString(135.64, 610.70, f'{_cd.month:02d}')
     c.drawString(152,    610.70, "月")
-    c.drawString(168.64, 610.70, str(_cd.day).rjust(2))
+    c.drawString(168.64, 610.70, f'{_cd.day:02d}')
     c.drawString(185,    610.70, "日現在の貴方ご名義")
 
     # 原本実測: x=85, y=594.76
