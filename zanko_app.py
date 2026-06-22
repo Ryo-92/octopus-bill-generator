@@ -802,17 +802,26 @@ def normalize_phone(s: str) -> str:
     """
     電話番号の書式を統一する。
       - 数字: 全角 → 半角
-      - カッコ（丸括弧）: 半角 ( ) → 全角 （ ）
-      - ハイフン類: すべて全角 － に統一
-    例: ０７７（563）8811 → 077（563）8811
-        077(563)-8811    → 077（563）－8811
+      - ハイフン区切り → 市外局番(市内局番)加入者番号 形式に変換
+    例: 077-563-8811  → 077(563)8811
+        ０３－１２３４－５６７８ → 03(1234)5678
+        077(563)8811  → そのまま（すでに括弧形式）
     """
     # 全角数字 → 半角
     s = s.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
-    # カッコは常に半角（全角カッコ → 半角）
+    # 全角カッコ → 半角
     s = s.translate(str.maketrans('（）', '()'))
-    # ハイフン類 → 全角ハイフン
-    s = s.replace('-', '－').replace('‐', '－').replace('ー', '－')
+    # ハイフン類 → 半角ハイフンに統一
+    s = s.replace('－', '-').replace('‐', '-').replace('ー', '-')
+    # すでに括弧形式ならそのまま返す
+    if '(' in s:
+        return s
+    # ハイフン区切り → NNN(NNN)NNNN 形式に変換
+    parts = s.split('-')
+    if len(parts) == 3:
+        return f'{parts[0]}({parts[1]}){parts[2]}'
+    if len(parts) == 2:
+        return f'{parts[0]}({parts[1]})'
     return s
 
 
@@ -1006,7 +1015,7 @@ def _draw_certificate(c, data: dict):
     # お取引店・電話
     # 原本実測: "お取引店 草津　支店" x=280, y=534.5, size=10
     c.setFont(FJ, 10)
-    c.drawString(280, 535.70, f"お取引店　{data.get('branch', '')}　支店")
+    c.drawString(280, 535.70, f"お取引店　{data.get('branch', '')}支店")
 
     # 原本実測: 電(280) 　(290) 　(300) 話(310) 　(320) phone(330) → 一括描画
     c.drawString(280, 520.70, f"電　　話　{data.get('phone', '')}")
@@ -1288,7 +1297,7 @@ with col_ph:
     phone = st.text_input(
         "電話番号",
         placeholder="例）077(563)8811",
-        help="数字は半角、カッコ・ハイフンは全角に自動統一されます。",
+        help="数字は半角、ハイフン区切りは自動的に「市外局番(市内局番)加入者番号」形式に変換されます。",
         key='_phone_input',
     )
     if phone.strip():
