@@ -1009,8 +1009,13 @@ def _draw_certificate(c, data: dict):
 
     # ── 6. 銀行名＋印影（原本PDFからクロップした画像をそのまま貼付）────────
     # 原本 bbox: x=288～542, y=543～622（PDF底基準）→ width=254pt, height=79pt
-    # ※ テキスト上部との重なりを避けるため y=547 に調整（+4pt）
-    c.drawImage(_bank_img_path(), 288, 547, width=254, height=79, mask="auto")
+    # 画像下端がテキスト上部（y≈543.7）と重なるため、下端 5pt をクリップして描画
+    c.saveState()
+    _clip = c.beginPath()
+    _clip.rect(288, 548, 254, 74)   # y=548～622 の範囲のみ表示（下端 5pt を除去）
+    c.clipPath(_clip, fill=0, stroke=0)
+    c.drawImage(_bank_img_path(), 288, 543, width=254, height=79, mask="auto")
+    c.restoreState()
     c.setLineWidth(0.25)
 
     # お取引店・電話
