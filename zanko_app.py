@@ -1009,13 +1009,18 @@ def _draw_certificate(c, data: dict):
 
     # ── 6. 銀行名＋印影（原本PDFからクロップした画像をそのまま貼付）────────
     # 原本 bbox: x=288～542, y=543～622（PDF底基準）→ width=254pt, height=79pt
-    c.drawImage(_bank_img_path(), 288, 543, width=254, height=79, mask="auto")
+    # ※ テキスト上部との重なりを避けるため y=547 に調整（+4pt）
+    c.drawImage(_bank_img_path(), 288, 547, width=254, height=79, mask="auto")
     c.setLineWidth(0.25)
 
     # お取引店・電話
     # 原本実測: "お取引店 草津　支店" x=280, y=534.5, size=10
     c.setFont(FJ, 10)
-    c.drawString(280, 535.70, f"お取引店　{data.get('branch', '')}支店")
+    # U+3000（全角スペース）を使わず2段描画で「支店名　支店」形式を実現
+    _branch_prefix = f"お取引店　{data.get('branch', '')}"
+    c.drawString(280, 535.70, _branch_prefix)
+    _bpw = pdfmetrics.stringWidth(_branch_prefix, FJ, 10)
+    c.drawString(280 + _bpw + 10, 535.70, "支店")  # 10pt = 全角1文字分のギャップ
 
     # 原本実測: 電(280) 　(290) 　(300) 話(310) 　(320) phone(330) → 一括描画
     c.drawString(280, 520.70, f"電　　話　{data.get('phone', '')}")
