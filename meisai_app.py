@@ -7,7 +7,9 @@
 import glob as _glob
 import hmac
 import io
+import json as _json
 import os
+import urllib.request as _url_req
 import streamlit as st
 from datetime import date, timedelta
 from reportlab.pdfgen import canvas as rl_canvas
@@ -412,6 +414,27 @@ def _draw_bottom_info(c, d):
 
 
 # ══════════════════════════════════════════════════════════════
+# 住所補完ユーティリティ
+# ══════════════════════════════════════════════════════════════
+@st.cache_data(ttl=3600)
+def _lookup_address_by_zip(zip7: str) -> tuple:
+    """
+    郵便番号（7桁数字文字列）から住所を取得する。zipcloud API を使用。
+    Returns: (都道府県, 市区町村, 町名)  失敗時は ("", "", "")
+    """
+    url = f"https://zipcloud.ibsnet.co.jp/api/search?zipcode={zip7}"
+    try:
+        with _url_req.urlopen(url, timeout=5) as resp:
+            data = _json.loads(resp.read().decode('utf-8'))
+        if data.get('results'):
+            r = data['results'][0]
+            return (r.get('address1', ''), r.get('address2', ''), r.get('address3', ''))
+    except Exception:
+        pass
+    return ('', '', '')
+
+
+# ══════════════════════════════════════════════════════════════
 # 認証
 # ══════════════════════════════════════════════════════════════
 def _check_password() -> bool:
@@ -575,9 +598,29 @@ st.markdown('---')
 
 # ── ⑦ ご使用場所 ─────────────────────────────────────────
 st.subheader('⑦ ご使用場所')
-address1 = st.text_input('住所（都道府県～番地）',
-    value='愛知県　名古屋市　熱田区　一番　３丁目　２−３０')
-address2 = st.text_input('建物名・部屋番号（任意）',
+
+postal_raw = st.text_input(
+    '郵便番号',
+    placeholder='例: 460-0008 または ４６０－０００８',
+    help='7桁入力すると住所①を自動補完します。半角・全角どちらでも可。',
+)
+# 半角数字のみ抽出して7桁チェック
+_zip_half = postal_raw.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+_zip_digits = ''.join(c for c in _zip_half if c.isdigit())
+if len(_zip_digits) == 7 and st.session_state.get('_meisai_last_zip') != _zip_digits:
+    _z1, _z2, _z3 = _lookup_address_by_zip(_zip_digits)
+    if _z1:
+        st.session_state['_meisai_addr1'] = '　'.join(p for p in [_z1, _z2, _z3] if p)
+        st.session_state['_meisai_last_zip'] = _zip_digits
+        st.rerun()
+
+address1 = st.text_input(
+    '住所①（都道府県～番地）',
+    key='_meisai_addr1',
+    placeholder='例: 愛知県　名古屋市　熱田区　一番　３丁目　２−３０',
+    help='郵便番号を入力すると都道府県・市区町村・町名が自動補完されます。番地は手動で追記してください。',
+)
+address2 = st.text_input('住所②（建物名・部屋番号、任意）',
     value='市営　一番荘　３棟　２０５')
 
 st.markdown('---')
