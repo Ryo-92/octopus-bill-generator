@@ -1,6 +1,6 @@
 """
 電気ご使用量のお知らせ（中部電力ミライズ形式）生成ツール — Streamlit Web アプリ
-フォント: IPAexMincho（または IPAexGothic にフォールバック）
+フォント: HeiseiMin-W3（PDF標準CID日本語明朝フォント — MS明朝相当）
 パスワード: Streamlit Cloud Secrets の APP_PASSWORD のみ — ソースコードに記載禁止
 """
 
@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 
 # ── ページサイズ ─────────────────────────────────────────────────
 PAGE_W, PAGE_H = 595, 842  # A4
@@ -48,28 +49,16 @@ def _fw_sen(sen: int) -> str:
     return f'{sen:02d}'.translate(_FWD) + '銭'
 
 # ── フォント ─────────────────────────────────────────────────────
-def _find_font_jp() -> str:
-    for pat in [
-        '/usr/share/fonts/**/*ipaexm*.ttf',
-        '/usr/share/fonts/**/*IPAexMincho*.ttf',
-        '/usr/share/fonts/**/*ipaexg*.ttf',
-        '/usr/share/fonts/**/*IPAexGothic*.ttf',
-    ]:
-        hits = sorted(_glob.glob(pat, recursive=True))
-        if hits:
-            return hits[0]
-    return os.path.join(os.path.dirname(__file__), 'IBMPlexSansJP-Regular.ttf')
-
-_FONT_PATH = _find_font_jp()
-_FONT_REG  = False
+# HeiseiMin-W3: PDF標準CID日本語明朝フォント（MS明朝相当）
+# 外部ファイル不要・Streamlit Cloud/Windows/macOS で共通動作
+FJ = 'HeiseiMin-W3'
+_FONT_REG = False
 
 def _ensure_font():
     global _FONT_REG
     if not _FONT_REG:
-        pdfmetrics.registerFont(TTFont('FJ', _FONT_PATH))
+        pdfmetrics.registerFont(UnicodeCIDFont('HeiseiMin-W3'))
         _FONT_REG = True
-
-FJ = 'FJ'
 
 # ══════════════════════════════════════════════════════════════
 # 描画ユーティリティ
