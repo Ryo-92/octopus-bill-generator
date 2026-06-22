@@ -146,8 +146,8 @@ def _draw(c, d):
     for ch, x0 in _TITLE:
         _tsb(c, x0, 48.5, ch, 13)
 
-    # ─── 2. 発行日 ─────────────────────────────────────────
-    _tsb(c, 453.8, 71.7, d['issue_date_str'], 8)
+    # ─── 2. 発行日 (右揃え x=555.3) ──────────────────────
+    _tsb(c, 555.3, 71.7, d['issue_date_str'], 8, align='right')
 
     # ─── 3. 挨拶文 ─────────────────────────────────────────
     _tsb(c, 21.2,  89.7, '毎度お引立ていただきありがとうございます。', 8)
@@ -246,13 +246,10 @@ def _draw_customer_table(c, d):
     _tsb(c, 205.6, B3h, 'ご使用日数', 7, _C_GREEN)
     _tsb(c, 248.2, B3h, '記事',       7, _C_GREEN)
 
-    # データ: 各列センタリング
-    cx1 = (11.34 + 72.9) / 2     # 42.1
-    cx2 = (72.9 + 201.6) / 2     # 137.2
-    cx3 = (201.6 + 244.6) / 2    # 223.1
-    _tsb(c, cx1, B3d, d['meter_read_date'],         7, align='center')
-    _tsb(c, cx2, B3d, d['usage_period'],             7, align='center')
-    _tsb(c, cx3, B3d, d['usage_days'] + '日',        7, align='center')
+    # データ: 原本に合わせて右揃え
+    _tsb(c, 70.0,  B3d, d['meter_read_date'],         7, align='right')
+    _tsb(c, 196.9, B3d, d['usage_period'],             7, align='right')
+    _tsb(c, 236.7, B3d, d['usage_days'] + '日',        7, align='right')
 
 
 # ── ご使用量・ご請求額ボックス ────────────────────────────────
