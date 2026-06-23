@@ -68,14 +68,19 @@ def _ry(top):
     """pdfplumber top → reportlab y"""
     return PAGE_H - top
 
-def _tsb(c, x, bottom, text, sz, col=None, align='left'):
-    """テキスト描画 (bottom = pdfplumber の glyph 下端)"""
+def _tsb(c, x, bottom, text, sz, col=None, align='left', charSpace=None):
+    """テキスト描画 (bottom = pdfplumber の glyph 下端)
+    charSpace: Noneの場合はフォントサイズ別のデフォルト値を使用。
+               明示的に指定した場合はそちらを優先（フィールド固有の文字間隔）。
+    """
     if col is None:
         col = _C_BLACK
     c.setFont(FJ, sz)
     c.setFillColorRGB(*col)
     # 原本の文字間隔（Tc）に合わせて設定（pdfplumber 実測値）
-    if abs(sz - 6.84) < 0.01:
+    if charSpace is not None:
+        tc = charSpace
+    elif abs(sz - 6.84) < 0.01:
         tc = 0.144
     elif abs(sz - 8.28) < 0.01:
         tc = 0.216
@@ -233,16 +238,16 @@ def _draw_customer_table(c, d):
 
     # ── 行 2: データ (bottom=157.0) ───────────────────────
     B2 = 157.0
-    _tsb(c, 12.1,  B2, d['customer_no'], 6.84)
-    _tsb(c, 113.4, B2, d['schedule'], 6.84)
-    _tsb(c, 131.0, B2, d['contract_type'], 6.84)
+    _tsb(c, 12.1,  B2, d['customer_no'],     6.84, charSpace=0.72)
+    _tsb(c, 113.4, B2, d['schedule'],         6.84)
+    _tsb(c, 131.0, B2, d['contract_type'],    6.84)
     cap = d.get('contract_capacity', '')
     if cap:
         _tsb(c, 326.2, B2, f'  {cap}Ａ', 6.84)
     pf = d.get('power_factor', '')
     if pf:
         _tsb(c, 375.8, B2, pf, 6.84)
-    _tsb(c, 409.5, B2, d['supply_point_id'], 6.84)
+    _tsb(c, 409.5, B2, d['supply_point_id'], 6.84, charSpace=0.72)
 
     # ── 行 3: 縦区切り + 検針日等 ─────────────────────────
     for x in [72.9, 201.6, 244.6]:
