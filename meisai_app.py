@@ -74,16 +74,23 @@ def _tsb(c, x, bottom, text, sz, col=None, align='left'):
         col = _C_BLACK
     c.setFont(FJ, sz)
     c.setFillColorRGB(*col)
+    # 原本の文字間隔（Tc）に合わせて設定（pdfplumber 実測値）
+    if abs(sz - 6.84) < 0.01:
+        tc = 0.144
+    elif abs(sz - 8.28) < 0.01:
+        tc = 0.216
+    else:
+        tc = 0
     # ＭＳ明朝 descent = 36/256 ≈ 0.1406 × sz
     # pdfplumber bottom = baseline + descent → baseline = bottom - descent
     rl_y = PAGE_H - bottom + sz * (36 / 256)
     s = str(text)
     if align == 'right':
-        c.drawRightString(x, rl_y, s)
+        c.drawRightString(x, rl_y, s, charSpace=tc)
     elif align == 'center':
-        c.drawCentredString(x, rl_y, s)
+        c.drawCentredString(x, rl_y, s, charSpace=tc)
     else:
-        c.drawString(x, rl_y, s)
+        c.drawString(x, rl_y, s, charSpace=tc)
 
 def _hl(c, x1, top, x2, lw=1.08, col=None):
     if col is None: col = _C_GREEN
