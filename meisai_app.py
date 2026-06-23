@@ -146,7 +146,7 @@ def _draw(c, d):
                     preserveAspectRatio=False, mask='auto')
 
     # ─── 2. 発行日 (右揃え x=555.3) ──────────────────────
-    _tsb(c, 555.3, 71.7, d['issue_date_str'], 8, align='right')
+    _tsb(c, 555.3, 71.7, d['issue_date_str'], 8.28, align='right')
 
     # ─── 3. 挨拶文（年月分はベージュ角丸ボックスで囲む）────
     _tsb(c, 21.2,  89.7, '毎度お引立ていただきありがとうございます。', 8.28)
@@ -226,9 +226,9 @@ def _draw_customer_table(c, d):
 
     # ── 行 2: データ (bottom=157.0) ───────────────────────
     B2 = 157.0
-    _tsb(c, 12.1,  B2, d['customer_no'],   7)
-    _tsb(c, 113.4, B2, d['schedule'],       7)
-    _tsb(c, 131.0, B2, d['contract_type'],  7)
+    _tsb(c, 12.1,  B2, d['customer_no'], 6.84)
+    _tsb(c, 113.4, B2, d['schedule'], 6.84)
+    _tsb(c, 131.0, B2, d['contract_type'], 6.84)
     cap = d.get('contract_capacity', '')
     if cap:
         _tsb(c, 326.2, B2, f'  {cap}Ａ', 6.84)
@@ -243,15 +243,15 @@ def _draw_customer_table(c, d):
 
     B3h = 170.3   # ヘッダー bottom
     B3d = 180.0   # データ bottom
-    _tsb(c, 14.0,  B3h, '検針日',     7)
+    _tsb(c, 14.0,  B3h, '検針日', 6.84)
     _tsb(c, 77.9,  B3h, 'ご使用期間', 6.84)
     _tsb(c, 205.6, B3h, 'ご使用日数', 6.84)
-    _tsb(c, 248.2, B3h, '記事',       7)
+    _tsb(c, 248.2, B3h, '記事', 6.84)
 
     # データ: 原本に合わせて右揃え
-    _tsb(c, 70.0,  B3d, d['meter_read_date'],         7, align='right')
-    _tsb(c, 196.9, B3d, d['usage_period'],             7, align='right')
-    _tsb(c, 236.7, B3d, d['usage_days'] + '日',        7, align='right')
+    _tsb(c, 70.0,  B3d, d['meter_read_date'], 6.84, align='right')
+    _tsb(c, 196.9, B3d, d['usage_period'], 6.84, align='right')
+    _tsb(c, 236.7, B3d, d['usage_days'] + '日', 6.84, align='right')
 
 
 # ── ご使用量・ご請求額ボックス ────────────────────────────────
@@ -269,17 +269,17 @@ def _draw_usage_billing(c, d):
 
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
-    _tsb(c, 309.4, 200.6, d['usage_kwh'] + 'ｋＷｈ', 7, align='right')
+    _tsb(c, 309.4, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
 
     # ご請求額 (bottom=203.1)
     B_r1 = 203.1
     _tsb(c, 364.0, B_r1, 'ご請求額', 6.84)
-    _tsb(c, 563.4, B_r1, _fw_yen(d['billing_amount']), 7, align='right')
+    _tsb(c, 563.4, B_r1, _fw_yen(d['billing_amount']), 6.84, align='right')
 
     # うち消費税等相当額 (bottom=214.6)
     B_r2 = 214.6
     _tsb(c, 364.0, B_r2, 'うち消費税等相当額', 6.84)
-    _tsb(c, 563.4, B_r2, _fw_yen(d['tax_amount']),    7, align='right')
+    _tsb(c, 563.4, B_r2, _fw_yen(d['tax_amount']), 6.84, align='right')
 
     # 右パネル仕切り線
     _hl(c, 363.4, 236.5, 578.0, lw=0.72)
@@ -293,14 +293,14 @@ def _draw_billing_detail(c, d):
     # 基本料金 (bottom=261.0)
     B1 = 261.0
     _tsb(c, 366.7, B1, '基本料金', 6.84)
-    _tsb(c, 550.3, B1, _fw_yen(d['basic_yen']),      7, align='right')
-    _tsb(c, 553.3, B1, _fw_sen(d['basic_sen']),       7)
+    _tsb(c, 550.3, B1, _fw_yen(d['basic_yen']), 6.84, align='right')
+    _tsb(c, 553.3, B1, _fw_sen(d['basic_sen']), 6.84)
 
     # 電力量料金 1段料金 (bottom=272.0)
     B2 = 272.0
     _tsb(c, 366.7, B2, '電力量料金　１段料金', 6.84)
-    _tsb(c, 550.3, B2, _fw_yen(d['energy1_yen']),    7, align='right')
-    _tsb(c, 553.3, B2, _fw_sen(d['energy1_sen']),     7)
+    _tsb(c, 550.3, B2, _fw_yen(d['energy1_yen']), 6.84, align='right')
+    _tsb(c, 553.3, B2, _fw_sen(d['energy1_sen']), 6.84)
 
     # うち燃料費調整額 (bottom=284.3)
     B3 = 284.3
@@ -311,7 +311,7 @@ def _draw_billing_detail(c, d):
     # 再エネ発電促進賦課金 (bottom=295.1)
     B4 = 295.1
     _tsb(c, 366.7, B4, '再エネ発電促進賦課金', 6.84)
-    _tsb(c, 550.3, B4, _fw_yen(d['renewable_yen']),  7, align='right')
+    _tsb(c, 550.3, B4, _fw_yen(d['renewable_yen']), 6.84, align='right')
 
 
 # ── 左パネル（計器セクション + グリッド線） ──────────────────
@@ -326,7 +326,7 @@ def _draw_meter_digits(c, reading_str, bottom):
     else:
         int_s, dec_s = reading_str, '0'
 
-    sz = 7
+    sz = 6.84
     # 整数部: cells 0-7 右寄せ
     start = 8 - len(int_s)
     for i, ch in enumerate(int_s):
@@ -398,13 +398,13 @@ def _draw_bottom_info(c, d):
     # 当月燃料費調整単価 (bottom=689.3)
     B1 = 689.3
     _tsb(c, 369.2, B1, '当月燃料費調整単価（税込）', 6.84)
-    _tsb(c, 518.9, B1, str(d['fuel_adj_unit_yen']).translate(_FWD) + '円', 7, align='right')
+    _tsb(c, 518.9, B1, str(d['fuel_adj_unit_yen']).translate(_FWD) + '円', 6.84, align='right')
     _tsb(c, 522.0, B1, f'{d["fuel_adj_unit_sen"]:02d}'.translate(_FWD) + '銭／ｋＷｈ', 6.84)
 
     # 再エネ発電促進賦課金単価 (bottom=697.7)
     B2 = 697.7
     _tsb(c, 369.2, B2, '再エネ発電促進賦課金単価（税込）', 6.84)
-    _tsb(c, 518.9, B2, str(d['renewable_unit_yen']).translate(_FWD) + '円', 7, align='right')
+    _tsb(c, 518.9, B2, str(d['renewable_unit_yen']).translate(_FWD) + '円', 6.84, align='right')
     _tsb(c, 522.0, B2, f'{d["renewable_unit_sen"]:02d}'.translate(_FWD) + '銭／ｋＷｈ', 6.84)
 
     # 翌月（）のご案内 (bottom=714.5)
@@ -414,10 +414,10 @@ def _draw_bottom_info(c, d):
 
     # 翌月 検針日・ご使用期間 (bottom=728.5)
     B4 = 728.5
-    _tsb(c, 371.9, B4, '検針日',       7)
+    _tsb(c, 371.9, B4, '検針日', 6.84)
     _tsb(c, 409.5, B4, d['next_meter_read_date'], 6.84)
-    _tsb(c, 449.3, B4, 'ご使用期間',  7)
-    _tsb(c, 506.9, B4, d['next_usage_period'],     7)
+    _tsb(c, 449.3, B4, 'ご使用期間', 6.84)
+    _tsb(c, 506.9, B4, d['next_usage_period'], 6.84)
 
     # 翌月 燃料費調整単価 (bottom=739.5)
     B5 = 739.5
