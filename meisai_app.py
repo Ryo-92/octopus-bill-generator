@@ -124,6 +124,36 @@ def _rr_outline(c, x0, top, x1, bottom, col, sw=1.08, r=5.4):
     c.setStrokeColorRGB(*col); c.setLineWidth(sw)
     c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r, fill=0, stroke=1)
 
+def _fill_path(c, x0, top, x1, bottom, fill, r=5.4,
+               tl=True, tr=True, bl=True, br=True,
+               stroke_col=None, sw=0.18):
+    """塗り・選択的な角丸（参考PDFの非対称丸角に対応）。
+    原本PDFの 'y' オペレータ（cp1=現在点）と完全一致するベジェ制御点を使用。
+    tl/tr/bl/br = True で対応する角を丸める。
+    stroke_col 指定時は外枠線も同一パスで描画（sw=線幅）。
+    """
+    rt = _ry(top)
+    rb = _ry(bottom)
+    c.setFillColorRGB(*fill)
+    if stroke_col:
+        c.setStrokeColorRGB(*stroke_col)
+        c.setLineWidth(sw)
+    p = c.beginPath()
+    p.moveTo(x0 + (r if tl else 0), rt)
+    if tl:
+        p.curveTo(x0 + r, rt, x0, rt, x0, rt - r)
+    p.lineTo(x0, rb + (r if bl else 0))
+    if bl:
+        p.curveTo(x0, rb + r, x0, rb, x0 + r, rb)
+    p.lineTo(x1 - (r if br else 0), rb)
+    if br:
+        p.curveTo(x1 - r, rb, x1, rb, x1, rb + r)
+    p.lineTo(x1, rt - (r if tr else 0))
+    if tr:
+        p.curveTo(x1, rt - r, x1, rt, x1 - r, rt)
+    p.close()
+    c.drawPath(p, fill=1, stroke=1 if stroke_col else 0)
+
 
 # ══════════════════════════════════════════════════════════════
 # PDF 生成
@@ -186,9 +216,14 @@ def _draw(c, d):
 
 # ── お客さま情報テーブル ──────────────────────────────────────
 def _draw_customer_table(c, d):
-    # ベージュ角丸ヘッダー
-    _rr_fill(c, 11.34, 124.88, 110.52, 138.56, _C_BEIGE, r=5.4)
-    _rr_fill(c, 129.78, 124.88, 577.98, 138.56, _C_BEIGE, r=5.4)
+    # ベージュ角丸ヘッダー（左: 左上角のみ丸, 右: 右上角のみ丸 ← 原本に合わせた非対称丸角）
+    # 原本に合わせ lw=0.18 の赤細外枠を追加
+    _fill_path(c, 11.34, 124.88, 110.52, 138.56, _C_BEIGE, r=5.4,
+               tl=True, tr=False, bl=False, br=False,
+               stroke_col=(1.0, 0.0, 0.0), sw=0.18)
+    _fill_path(c, 129.78, 124.88, 577.98, 138.56, _C_BEIGE, r=5.4,
+               tl=False, tr=True, bl=False, br=False,
+               stroke_col=(1.0, 0.0, 0.0), sw=0.18)
 
     # 緑の角丸外枠
     _rr_outline(c, 11.34, 124.88, 577.98, 184.64, _C_GREEN, sw=1.08, r=5.4)
@@ -272,10 +307,15 @@ def _draw_usage_billing(c, d):
     # 右パネル外枠: x=363.4〜578.0  top=190.0〜679.1 (pdfplumber)
     _rr_outline(c, 363.4, 190.0, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
 
-    # 左の薄緑角丸ボックス（fill）
-    _rr_fill(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=5.4)
-    # 右の薄緑角丸ボックス（fill）
-    _rr_fill(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4)
+    # 左の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角（原本に合わせた非対称丸角）
+    # 外枠: 原本に合わせ lw=0.18 の極細緑線
+    _fill_path(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=5.4,
+               tl=True, tr=True, bl=False, br=False,
+               stroke_col=_C_GREEN, sw=0.18)
+    # 右の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角
+    _fill_path(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4,
+               tl=True, tr=True, bl=False, br=False,
+               stroke_col=_C_GREEN, sw=0.18)
 
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
@@ -620,6 +660,10 @@ st.markdown('---')
 
 # ── ⑦ ご使用場所 ─────────────────────────────────────────
 st.subheader('⑦ ご使用場所')
+
+# address1 の初期値（未設定時のみ）
+if '_meisai_addr1' not in st.session_state:
+    st.session_state['_meisai_addr1'] = '愛知県　名古屋市　熱田区　一番　３丁目　２−３０'
 
 postal_raw = st.text_input(
     '郵便番号',
