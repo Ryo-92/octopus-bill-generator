@@ -111,7 +111,7 @@ def _fill(c, x0, top, x1, bottom, fill):
     c.setFillColorRGB(*fill)
     c.rect(x0, _ry(bottom), x1-x0, bottom-top, fill=1, stroke=0)
 
-def _rr_fill(c, x0, top, x1, bottom, fill, r=4, stroke_col=None, sw=1.08):
+def _rr_fill(c, x0, top, x1, bottom, fill, r=5.4, stroke_col=None, sw=1.08):
     """角丸矩形 塗りつぶし"""
     c.setFillColorRGB(*fill)
     if stroke_col:
@@ -119,7 +119,7 @@ def _rr_fill(c, x0, top, x1, bottom, fill, r=4, stroke_col=None, sw=1.08):
     c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r,
                 fill=1, stroke=1 if stroke_col else 0)
 
-def _rr_outline(c, x0, top, x1, bottom, col, sw=1.08, r=4):
+def _rr_outline(c, x0, top, x1, bottom, col, sw=1.08, r=5.4):
     """角丸矩形 外枠のみ"""
     c.setStrokeColorRGB(*col); c.setLineWidth(sw)
     c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r, fill=0, stroke=1)
@@ -138,11 +138,9 @@ def generate_pdf(d: dict) -> bytes:
 
 
 def _draw(c, d):
-    # ─── 1. タイトル グレーボックス（塗り＋細黒枠 lw=0.18）────
+    # ─── 1. タイトル グレーボックス（塗りのみ・枠線なし）────
     c.setFillColorRGB(*_C_GRAY)
-    c.setStrokeColorRGB(0, 0, 0)
-    c.setLineWidth(0.18)
-    c.rect(13.1, _ry(51.4), 284.4-13.1, 51.4-31.8, fill=1, stroke=1)
+    c.rect(13.1, _ry(51.4), 284.4-13.1, 51.4-31.8, fill=1, stroke=0)
 
     # 個別文字を等間隔に配置 (bottom=48.5)
     _TITLE = [('電',14.0),('気',39.3),('ご',64.5),('使',89.7),
@@ -163,7 +161,7 @@ def _draw(c, d):
     # ─── 3. 挨拶文（年月分はベージュ角丸ボックスで囲む）────
     _tsb(c, 21.2,  89.7, '毎度お引立ていただきありがとうございます。', 8.28)
     # 年月分ボックス: x=205.6〜289.8 top=78.4〜92.8 (pdfplumber)
-    _rr_fill(c, 205.6, 78.4, 289.8, 92.8, _C_BEIGE, r=4,
+    _rr_fill(c, 205.6, 78.4, 289.8, 92.8, _C_BEIGE, r=5.4,
              stroke_col=(1.0, 0.0, 0.0), sw=0.72)
     _tsb(c, 209.2, 89.7, f'{d["target_year"]}年{d["target_month"]}月分', 8.28)
     _tsb(c, 297.0, 89.7, 'の電気ご使用量を下記のとおりお知らせいたします。', 8.28)
@@ -189,11 +187,11 @@ def _draw(c, d):
 # ── お客さま情報テーブル ──────────────────────────────────────
 def _draw_customer_table(c, d):
     # ベージュ角丸ヘッダー
-    _rr_fill(c, 11.34, 124.88, 110.52, 138.56, _C_BEIGE, r=4)
-    _rr_fill(c, 129.78, 124.88, 577.98, 138.56, _C_BEIGE, r=4)
+    _rr_fill(c, 11.34, 124.88, 110.52, 138.56, _C_BEIGE, r=5.4)
+    _rr_fill(c, 129.78, 124.88, 577.98, 138.56, _C_BEIGE, r=5.4)
 
     # 緑の角丸外枠
-    _rr_outline(c, 11.34, 124.88, 577.98, 184.64, _C_GREEN, sw=1.08, r=4)
+    _rr_outline(c, 11.34, 124.88, 577.98, 184.64, _C_GREEN, sw=1.08, r=5.4)
 
     # 水平線
     _hl(c, 11.3,  138.6, 578.0, lw=1.08)
@@ -270,14 +268,14 @@ def _draw_customer_table(c, d):
 def _draw_usage_billing(c, d):
     # ── 大パネル外枠（緑 rounded outline）────────────────────
     # 左パネル外枠: x=10.8〜360.4  top=190.8〜690.1 (pdfplumber)
-    _rr_outline(c, 10.8, 190.8, 360.4, 690.1, _C_GREEN, sw=1.08, r=6)
+    _rr_outline(c, 10.8, 190.8, 360.4, 690.1, _C_GREEN, sw=1.08, r=5.4)
     # 右パネル外枠: x=363.4〜578.0  top=190.0〜679.1 (pdfplumber)
-    _rr_outline(c, 363.4, 190.0, 578.0, 679.1, _C_GREEN, sw=1.08, r=6)
+    _rr_outline(c, 363.4, 190.0, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
 
     # 左の薄緑角丸ボックス（fill）
-    _rr_fill(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=6)
+    _rr_fill(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=5.4)
     # 右の薄緑角丸ボックス（fill）
-    _rr_fill(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=6)
+    _rr_fill(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4)
 
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
@@ -403,9 +401,9 @@ def _draw_left_panel(c, d):
 def _draw_bottom_info(c, d):
     # ── 翌月案内ボックス外枠 ─────────────────────────────
     # 左ボックス（空欄）: x=11.3〜323.5  top=702.3〜748.2
-    _rr_outline(c, 11.3, 702.3, 323.5, 748.2, _C_GREEN, sw=1.08, r=6)
+    _rr_outline(c, 11.3, 702.3, 323.5, 748.2, _C_GREEN, sw=1.08, r=5.4)
     # 右ボックス（翌月案内）: x=363.4〜578.0  top=702.3〜748.2
-    _rr_outline(c, 363.4, 702.3, 578.0, 748.2, _C_GREEN, sw=1.08, r=6)
+    _rr_outline(c, 363.4, 702.3, 578.0, 748.2, _C_GREEN, sw=1.08, r=5.4)
 
     # 当月燃料費調整単価 (bottom=689.3)
     B1 = 689.3
