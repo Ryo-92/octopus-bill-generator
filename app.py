@@ -173,12 +173,18 @@ col1, col2 = st.columns([2, 1])
 with col1:
     name = st.text_input("氏名（フルネーム）", placeholder="例：山田 太郎", value="")
 with col2:
-    postal = st.text_input("郵便番号", placeholder="例：150-0001", value="")
+    postal = st.text_input(
+        "郵便番号",
+        placeholder="例：150-0001",
+        value="",
+        help="半角数字で入力してください",
+    )
 
 address = st.text_input(
     "住所（都道府県〜部屋番号まで）",
     placeholder="例：東京都渋谷区神宮前1-2-3 サンプルマンション301",
     value="",
+    help="半角数字で入力してください",
 )
 
 st.markdown("---")
