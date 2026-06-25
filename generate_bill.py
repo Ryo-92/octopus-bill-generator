@@ -73,19 +73,22 @@ def _rep(data: bytes, old_b: bytes, new_b: bytes) -> bytes:
 
 def _rep_td(data: bytes,
             old_ascii: str, new_ascii: str,
-            yen_b: bytes, size: float) -> bytes:
+            yen_b: bytes, size: float,
+            extra_td: float = 0.0) -> bytes:
     """
     Td オフセット付き右寄せ金額フィールドを置換し Td 値も再計算する。
 
     ストリーム中のパターン:
       TD_VAL 0 Td ... (OLD_AMOUNTYEN) Tj T* -TD_VAL 0 Td
+
+    extra_td: テンプレート起因の右端ずれを補正する追加オフセット（pt）。
     """
     old_b = old_ascii.encode('ascii') + yen_b
     new_b = new_ascii.encode('ascii') + yen_b
     if old_b == new_b:
         return data
 
-    delta = _tw(old_ascii, size) - _tw(new_ascii, size)
+    delta = _tw(old_ascii, size) - _tw(new_ascii, size) + extra_td
 
     def _repl(m):
         old_td  = float(m.group(1))
@@ -414,10 +417,10 @@ def _build_patches_p2(d, b):
                     b'(' + str(b["days"]).encode() + b')')
 
         # kWh（Td 付き右寄せ）
+        # extra_td=1.39: テンプレートの kWh 右端が他列（30A, 28.20円 等）より
+        # 1.39pt 短いテンプレート起因のずれを補正する。
         data = _rep_td(data, _T_KWH.rstrip(' kWh'), f"{b['kwh']:.2f}",
-                       b' kWh', 11.0)
-        # ↑ _tw が kWh の 'k','W','h' も考慮するよう修正:
-        #   実際には amount 文字列全体で比較
+                       b' kWh', 11.0, extra_td=1.39)
         data = _rep(data, _T_KWH.encode(), kwh_s.encode())   # フォールバック
 
         # ── 金額（Td 付き右寄せ）─────────────────────────────────
