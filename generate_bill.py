@@ -2511,6 +2511,37 @@ def _register_font():
             continue
 
     raise RuntimeError("日本語フォントが見つかりません。")
+def _wrap_address(addr: str, font: str, size: float) -> list:
+    """
+    住所を1〜2行に分割する。
+    折り返し基準：原本PDFの住所幅（「東京都渋谷区恵比寿西1-14-7 アマヴェル恵比寿401」
+    の文字列幅）を超えた場合に改行する。
+    分割優先順位：最後のスペース → 文字単位
+    """
+    _REF = "東京都渋谷区恵比寿西1-14-7 アマヴェル恵比寿401"
+    max_w = pdfmetrics.stringWidth(_REF, font, size)
+
+    if pdfmetrics.stringWidth(addr, font, size) <= max_w:
+        return [addr]
+
+    # 最後のスペースで折り返す（番地と建物名の境界）
+    best_cut = -1
+    for i, ch in enumerate(addr):
+        if ch == ' ':
+            if pdfmetrics.stringWidth(addr[:i], font, size) <= max_w:
+                best_cut = i
+
+    if best_cut >= 0:
+        return [addr[:best_cut], addr[best_cut + 1:]]
+
+    # スペースがない場合は文字単位で折り返す
+    for i in range(len(addr) - 1, 0, -1):
+        if pdfmetrics.stringWidth(addr[:i], font, size) <= max_w:
+            return [addr[:i], addr[i:]]
+
+    return [addr]
+
+
 def _make_name_address_overlay(d):
     """
     氏名・住所のみをオーバーレイする最小 PDF。
@@ -2521,26 +2552,34 @@ def _make_name_address_overlay(d):
        P1 住所  : cm y=677.008 + Tm y=4  → baseline 681.008
        P2 名前  : cm y=695.181 + Tm y=3  → baseline 698.181
        P2 住所  : cm y=667.181 + Tm y=3  → baseline 670.181
+    ★ 住所が原本の基準幅を超える場合は 15pt 間隔で２行に折り返す
+       （行間 15pt = 郵便番号→住所間の実測値）
     """
     _register_font()
     nm   = d["name"]
     addr = d["address"]
 
+    # 住所を1～2行に分割（フォントロード後に計算）
+    addr_lines = _wrap_address(addr, _FONT_JP, 11)
+    _LINE_GAP  = 15.0   # 郵便番号→住所の実測行間（pt）
+
     buf = io.BytesIO()
     c   = rl_canvas.Canvas(buf, pagesize=(PAGE_W, PAGE_H))
 
-    # ── PAGE 1 ──────────────────────────────────────────────────────
+    # ── PAGE 1 ────────────────────────────────────────────────────────────────
     c.setFillColor(black)
     c.setFont(_FONT_JP, 11)
     c.drawString(51.024, 711.008, f"{nm} 様")
-    c.drawString(51.024, 681.008, addr)
+    for i, line in enumerate(addr_lines):
+        c.drawString(51.024, 681.008 - i * _LINE_GAP, line)
     c.showPage()
 
-    # ── PAGE 2 ──────────────────────────────────────────────────────
+    # ── PAGE 2 ────────────────────────────────────────────────────────────────
     c.setFillColor(black)
     c.setFont(_FONT_JP, 11)
     c.drawString(51.024, 698.181, f"{nm} 様")
-    c.drawString(51.024, 670.181, addr)
+    for i, line in enumerate(addr_lines):
+        c.drawString(51.024, 670.181 - i * _LINE_GAP, line)
     c.showPage()
 
     c.save()
