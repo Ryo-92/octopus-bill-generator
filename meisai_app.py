@@ -321,7 +321,7 @@ def _draw_usage_billing(c, d):
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
     # x=345.8 = 360.4(ボックス右端) - 14.6pt（右パネル「ご請求額」値と同じ絶対余白）
-    _tsb(c, 345.8, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
+    _tsb(c, 336.6, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
 
     # ご請求額 (bottom=203.1)
     B_r1 = 203.1
