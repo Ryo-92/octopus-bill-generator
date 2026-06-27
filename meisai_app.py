@@ -307,10 +307,12 @@ def _draw_usage_billing(c, d):
 
     # 左の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角（原本に合わせた非対称丸角）
     # stroke_col なし: 原本は fill 専用パス（境界線は外枠と _hl が担う）
-    _fill_path(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=5.4,
+    _fill_path(c, 11.34, 191.34, 359.86, 275.54, _C_LT_GREEN, r=4.86,
                tl=True, tr=True, bl=False, br=False)
     # 右の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角
-    _fill_path(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4,
+    # 座標は外枠ストローク内側エッジ (x0+sw/2, top+sw/2, r-sw/2) に合わせることで
+    # コーナー部の白い隙間を解消する
+    _fill_path(c, 363.94, 190.54, 577.46, 236.48, _C_LT_GREEN, r=4.86,
                tl=True, tr=True, bl=False, br=False)
 
     # ── 大パネル外枠（緑 rounded outline）── fill の上に重ねて描く ──
