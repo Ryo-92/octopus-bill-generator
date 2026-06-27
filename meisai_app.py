@@ -310,16 +310,15 @@ def _draw_usage_billing(c, d):
     _fill_path(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=5.4,
                tl=True, tr=True, bl=False, br=False)
     # 右の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角
-    # 座標は外枠ストローク内側エッジ (x0+sw/2, top+sw/2, r-sw/2) に合わせることで
-    # コーナー部の白い隙間を解消する
-    _fill_path(c, 363.94, 190.54, 577.46, 236.48, _C_LT_GREEN, r=4.86,
+    # x=363.42 は原本 pdfplumber 実測値 (外枠と同じ x に揃える)
+    _fill_path(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4,
                tl=True, tr=True, bl=False, br=False)
 
     # ── 大パネル外枠（緑 rounded outline）── fill の上に重ねて描く ──
     # 左パネル外枠: x=10.8〜360.4  top=190.8〜690.1 (pdfplumber)
     _rr_outline(c, 10.8, 190.8, 360.4, 690.1, _C_GREEN, sw=1.08, r=5.4)
-    # 右パネル外枠: x=363.4〜578.0  top=190.0〜679.1 (pdfplumber)
-    _rr_outline(c, 363.4, 190.0, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
+    # 右パネル外枠: x=363.42〜578.0  top=190.04〜679.1 (原本 pdfplumber 実測値)
+    _rr_outline(c, 363.42, 190.04, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
 
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
