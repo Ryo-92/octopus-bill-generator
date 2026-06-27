@@ -276,8 +276,8 @@ def _draw_customer_table(c, d):
     _tsb(c, 131.0, B2, d['contract_type'],    6.84)
     cap = d.get('contract_capacity', '')
     if cap:
-        # 列中心 (323.5+372.2)/2=347.85 に center 揃え → ヘッダー「契約容量」(cx≈347.2) と一致
-        _tsb(c, 347.85, B2, f'{cap}Ａ', 6.84, align='center')
+        # 原本実測: '３０Ａ' x0=333.0 ← ヘッダー「契約容量」x0=333.4 と同じ左揃え
+        _tsb(c, 333.4, B2, f'{cap}Ａ', 6.84)
     pf = d.get('power_factor', '')
     if pf:
         _tsb(c, 375.8, B2, pf, 6.84)
@@ -320,8 +320,8 @@ def _draw_usage_billing(c, d):
 
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
-    # x=345.8 = 360.4(ボックス右端) - 14.6pt（右パネル「ご請求額」値と同じ絶対余白）
-    _tsb(c, 336.6, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
+    # 原本実測: '９２ｋＷｈ' x1=309.4 → right-align at x=309.4
+    _tsb(c, 309.4, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
 
     # ご請求額 (bottom=203.1)
     B_r1 = 203.1
