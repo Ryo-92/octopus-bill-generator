@@ -302,11 +302,8 @@ def _draw_customer_table(c, d):
 
 # ── ご使用量・ご請求額ボックス ────────────────────────────────
 def _draw_usage_billing(c, d):
-    # ── 大パネル外枠（緑 rounded outline）────────────────────
-    # 左パネル外枠: x=10.8〜360.4  top=190.8〜690.1 (pdfplumber)
-    _rr_outline(c, 10.8, 190.8, 360.4, 690.1, _C_GREEN, sw=1.08, r=5.4)
-    # 右パネル外枠: x=363.4〜578.0  top=190.0〜679.1 (pdfplumber)
-    _rr_outline(c, 363.4, 190.0, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
+    # ── 薄緑 fill を先に描き、その後に外枠を重ねる ──────────────
+    # （外枠を先に描くと fill が外枠の内側半分を覆い、縦線が細く見えるため）
 
     # 左の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角（原本に合わせた非対称丸角）
     # 外枠: 原本に合わせ lw=0.18 の極細緑線
@@ -317,6 +314,12 @@ def _draw_usage_billing(c, d):
     _fill_path(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4,
                tl=True, tr=True, bl=False, br=False,
                stroke_col=_C_GREEN, sw=0.18)
+
+    # ── 大パネル外枠（緑 rounded outline）── fill の上に重ねて描く ──
+    # 左パネル外枠: x=10.8〜360.4  top=190.8〜690.1 (pdfplumber)
+    _rr_outline(c, 10.8, 190.8, 360.4, 690.1, _C_GREEN, sw=1.08, r=5.4)
+    # 右パネル外枠: x=363.4〜578.0  top=190.0〜679.1 (pdfplumber)
+    _rr_outline(c, 363.4, 190.0, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
 
     # ご使用量 (bottom=200.6)
     _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
