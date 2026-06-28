@@ -310,8 +310,12 @@ def _draw_usage_billing(c, d):
     _fill_path(c, 11.34, 191.48, 360.36, 275.54, _C_LT_GREEN, r=5.4,
                tl=True, tr=True, bl=False, br=False)
     # 右の薄緑角丸ボックス（fill）: 上2角のみ丸, 下は直角
-    # x=363.42 は原本 pdfplumber 実測値 (外枠と同じ x に揃える)
-    _fill_path(c, 363.42, 191.48, 577.98, 236.48, _C_LT_GREEN, r=5.4,
+    # 右パネル fill: border 内縁に完全一致させる
+    # top = border_top(190.04) + sw/2(0.54) = 190.58
+    # x1  = border_x1(578.0)  - sw/2(0.54) = 577.46
+    # r   = border_r(5.4)     - sw/2(0.54) = 4.86
+    # → fill TL/TR arc center が border inner arc center と一致し、コーナー白抜けを解消
+    _fill_path(c, 363.42, 190.58, 577.46, 236.48, _C_LT_GREEN, r=4.86,
                tl=True, tr=True, bl=False, br=False)
 
     # ── 大パネル外枠（緑 rounded outline）── fill の上に重ねて描く ──
@@ -320,14 +324,9 @@ def _draw_usage_billing(c, d):
     # 右パネル外枠: x=362.88〜578.0  top=190.04〜679.1
     # x=362.88 = fill_x0(363.42) - sw/2(0.54): border内縁がfill左端(363.42)に一致
     # 左パネルと同構造: border_x0 + sw/2 = fill_x0  (10.8+0.54=11.34)
-    _rr_outline(c, 362.88, 190.04, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
-
-    # ご使用量 (bottom=200.6)
-    _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
-    # 原本実測: '９２ｋＷｈ' x1=309.4 → right-align at x=309.4
-    _tsb(c, 309.4, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
-
-    # ご請求額 (bottom=203.1)
+    _rr_outline(c, 362.88, 190.    # 右パネル外枠: x=363.42〜578.0  top=190.04〜679.1 (pdfplumber 実測値)
+    # fill を先に描き border を上書き → border 位置を原本と完全一致
+    _rr_outline(c, 363.42, 190.04, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)03.1)
     B_r1 = 203.1
     _tsb(c, 364.0, B_r1, 'ご請求額', 6.84)
     _tsb(c, 563.4, B_r1, _fw_yen(d['billing_amount']), 6.84, align='right')
