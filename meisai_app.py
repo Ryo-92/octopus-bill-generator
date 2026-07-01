@@ -321,12 +321,9 @@ def _draw_usage_billing(c, d):
     # ── 大パネル外枠（緑 rounded outline）── fill の上に重ねて描く ──
     # 左パネル外枠: x=10.8〜360.4  top=190.8〜690.1 (pdfplumber)
     _rr_outline(c, 10.8, 190.8, 360.4, 690.1, _C_GREEN, sw=1.08, r=5.4)
-    # 右パネル外枠: x=362.88〜578.0  top=190.04〜679.1
-    # x=362.88 = fill_x0(363.42) - sw/2(0.54): border内縁がfill左端(363.42)に一致
-    # 左パネルと同構造: border_x0 + sw/2 = fill_x0  (10.8+0.54=11.34)
-    _rr_outline(c, 362.88, 190.    # 右パネル外枠: x=363.42〜578.0  top=190.04〜679.1 (pdfplumber 実測値)
+    # 右パネル外枠: x=363.42〜578.0  top=190.04〜679.1 (pdfplumber 実測値)
     # fill を先に描き border を上書き → border 位置を原本と完全一致
-    _rr_outline(c, 363.42, 190.04, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)03.1)
+    _rr_outline(c, 363.42, 190.04, 578.0, 679.1, _C_GREEN, sw=1.08, r=5.4)
     B_r1 = 203.1
     _tsb(c, 364.0, B_r1, 'ご請求額', 6.84)
     _tsb(c, 563.4, B_r1, _fw_yen(d['billing_amount']), 6.84, align='right')
