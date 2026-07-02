@@ -659,7 +659,7 @@ st.subheader('⑦ ご使用場所')
 
 # address1 の初期値（未設定時のみ）
 if '_meisai_addr1' not in st.session_state:
-    st.session_state['_meisai_addr1'] = '愛知県　名古屋市　熱田区　一番　３丁目　２−３０'
+    st.session_state['_meisai_addr1'] = '愛知県　名古屋市　熱田区　一番　３丁目　２－３０'
 
 postal_raw = st.text_input(
     '郵便番号',
@@ -679,7 +679,7 @@ if len(_zip_digits) == 7 and st.session_state.get('_meisai_last_zip') != _zip_di
 address1 = st.text_input(
     '住所①（都道府県～番地）',
     key='_meisai_addr1',
-    placeholder='例: 愛知県　名古屋市　熱田区　一番　３丁目　２−３０',
+    placeholder='例: 愛知県　名古屋市　熱田区　一番　３丁目　２－３０',
     help='郵便番号を入力すると都道府県・市区町村・町名が自動補完されます。番地は手動で追記してください。',
 )
 address2 = st.text_input('住所②（建物名・部屋番号、任意）',
@@ -738,8 +738,9 @@ data = dict(
     next_usage_period       = next_usage_period_str,
     next_fuel_adj_unit_str  = next_fuel_adj_unit_str,
 
-    address1 = address1.strip(),
-    address2 = address2.strip(),
+    # U+2212（数学マイナス）→ U+FF0D（全角ハイフン）に正規化（MS Mincho での半角化を防止）
+    address1 = address1.strip().replace('−', '－'),
+    address2 = address2.strip().replace('−', '－'),
 )
 
 if st.button('⚡　電気ご使用量のお知らせ PDF を生成する',
