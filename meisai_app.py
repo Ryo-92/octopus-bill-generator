@@ -646,6 +646,13 @@ _fw_tr = str.maketrans('0123456789', '０１２３４５６７８９')
 if '_customer_no' not in st.session_state:
     st.session_state['_customer_no'] = '１１０３９７３０２００５０'
 
+def _randomize_customer_no():
+    """お客さま番号をランダム生成（on_click コールバック）"""
+    _FW_TR2 = str.maketrans('0123456789', '０１２３４５６７８９')
+    st.session_state['_customer_no'] = ''.join(
+        str(_rand.randint(0, 9)) for _ in range(13)
+    ).translate(_FW_TR2)
+
 # ── ① 基本情報 ──────────────────────────────────────────────
 st.subheader('① 基本情報')
 col1, col2 = st.columns([1, 1])
@@ -661,12 +668,8 @@ with col1:
         )
     with _cn_btn_col:
         st.write('')  # ラベル分のスペース調整
-        if st.button('変更', key='_rnd_cn_btn', use_container_width=True, type='primary'):
-            _FW_TR2 = str.maketrans('0123456789', '０１２３４５６７８９')
-            st.session_state['_customer_no'] = ''.join(
-                str(_rand.randint(0, 9)) for _ in range(13)
-            ).translate(_FW_TR2)
-            st.rerun()
+        st.button('変更', key='_rnd_cn_btn', use_container_width=True, type='primary',
+                  on_click=_randomize_customer_no)
 with col2:
     target_ym = st.date_input('年月（月初日で指定）',
                               value=date(today.year, today.month, 1))
