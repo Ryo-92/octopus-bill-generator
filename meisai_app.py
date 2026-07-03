@@ -577,7 +577,7 @@ def _inspection_date(year: int, month: int, sched: int) -> date:
 def _gen_usage_kwh(rng, billing_month: int, usage_days: int) -> int:
     """季節・使用日数に応じたご使用量をランダム生成"""
     # 成人男性 or 女性をランダム選択
-    daily = rng.uniform(5.5, 10.5) if rng.random() < 0.5 else rng.uniform(4.5, 8.5)
+    daily = rng.uniform(4.4, 8.4) if rng.random() < 0.5 else rng.uniform(3.6, 6.8)
     # 季節係数（billing_month ≒ 検針月 = 使用期間の後半が属する月）
     factors = {
         1: 1.30, 2: 1.25, 3: 1.05, 4: 0.88, 5: 0.85,
