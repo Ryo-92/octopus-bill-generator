@@ -4,11 +4,13 @@
 パスワード: Streamlit Cloud Secrets の APP_PASSWORD のみ — ソースコードに記載禁止
 """
 
+import calendar as _cal
 import glob as _glob
 import hmac
 import io
 import json as _json
 import os
+import random as _rand
 import urllib.request as _url_req
 import streamlit as st
 from datetime import date, timedelta
@@ -112,17 +114,12 @@ def _fill(c, x0, top, x1, bottom, fill):
     c.rect(x0, _ry(bottom), x1-x0, bottom-top, fill=1, stroke=0)
 
 def _rr_fill(c, x0, top, x1, bottom, fill, r=5.4, stroke_col=None, sw=1.08):
-    """角丸矩形 塗りつぶし"""
+    """角丸矩形 塗りつぶし（全4角丸）"""
     c.setFillColorRGB(*fill)
     if stroke_col:
         c.setStrokeColorRGB(*stroke_col); c.setLineWidth(sw)
     c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r,
                 fill=1, stroke=1 if stroke_col else 0)
-
-def _rr_outline(c, x0, top, x1, bottom, col, sw=1.08, r=5.4):
-    """角丸矩形 外枠のみ"""
-    c.setStrokeColorRGB(*col); c.setLineWidth(sw)
-    c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r, fill=0, stroke=1)
 
 def _fill_path(c, x0, top, x1, bottom, fill, r=5.4,
                tl=True, tr=True, bl=True, br=True,
@@ -132,27 +129,43 @@ def _fill_path(c, x0, top, x1, bottom, fill, r=5.4,
     tl/tr/bl/br = True で対応する角を丸める。
     stroke_col 指定時は外枠線も同一パスで描画（sw=線幅）。
     """
-    rt = _ry(top)
-    rb = _ry(bottom)
+    rt = _ry(top)     # reportlab 上辺 y（大きい値）
+    rb = _ry(bottom)  # reportlab 下辺 y（小さい値）
     c.setFillColorRGB(*fill)
     if stroke_col:
         c.setStrokeColorRGB(*stroke_col)
         c.setLineWidth(sw)
     p = c.beginPath()
+    # 開始点: 上辺の左側（TL角丸あり → x0+r, なし → x0）
     p.moveTo(x0 + (r if tl else 0), rt)
+    # 左上 (TL) 角
     if tl:
+        # PDF 'y' operator: cp1=現在点(x0+r,rt), cp2=(x0,rt), end=(x0,rt-r)
         p.curveTo(x0 + r, rt, x0, rt, x0, rt - r)
+    # 左辺を下へ
     p.lineTo(x0, rb + (r if bl else 0))
+    # 左下 (BL) 角
     if bl:
         p.curveTo(x0, rb + r, x0, rb, x0 + r, rb)
+    # 下辺を右へ
     p.lineTo(x1 - (r if br else 0), rb)
+    # 右下 (BR) 角
     if br:
         p.curveTo(x1 - r, rb, x1, rb, x1, rb + r)
+    # 右辺を上へ
     p.lineTo(x1, rt - (r if tr else 0))
+    # 右上 (TR) 角
     if tr:
+        # PDF 'y' operator: cp1=現在点(x1,rt-r), cp2=(x1,rt), end=(x1-r,rt)
         p.curveTo(x1, rt - r, x1, rt, x1 - r, rt)
+    # 上辺を左へ close で始点まで戻る
     p.close()
     c.drawPath(p, fill=1, stroke=1 if stroke_col else 0)
+
+def _rr_outline(c, x0, top, x1, bottom, col, sw=1.08, r=5.4):
+    """角丸矩形 外枠のみ"""
+    c.setStrokeColorRGB(*col); c.setLineWidth(sw)
+    c.roundRect(x0, _ry(bottom), x1-x0, bottom-top, r, fill=0, stroke=1)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -318,6 +331,13 @@ def _draw_usage_billing(c, d):
     _rr_outline(c, 10.80, 190.76, 360.36, 690.08, _C_GREEN, sw=1.08, r=5.4)
     # 右パネル外枠: x=363.42〜577.98  top=190.04〜679.10 (pdfplumber 実測値)
     _rr_outline(c, 363.42, 190.04, 577.98, 679.10, _C_GREEN, sw=1.08, r=5.4)
+
+    # ご使用量 (bottom=200.6)
+    _tsb(c, 14.0,  200.6, 'ご使用量', 6.84)
+    # 原本実測: '９２ｋＷｈ' x1=309.4 → right-align at x=309.4
+    _tsb(c, 309.4, 200.6, d['usage_kwh'] + 'ｋＷｈ', 6.84, align='right')
+
+    # ご請求額 (bottom=203.1)
     B_r1 = 203.1
     _tsb(c, 364.0, B_r1, 'ご請求額', 6.84)
     _tsb(c, 563.4, B_r1, _fw_yen(d['billing_amount']), 6.84, align='right')
@@ -465,10 +485,11 @@ def _draw_bottom_info(c, d):
     _tsb(c, 449.3, B4, 'ご使用期間', 6.84)
     _tsb(c, 506.9, B4, d['next_usage_period'], 6.84)
 
-    # 翌月 燃料費調整単価 (bottom=739.5)
+    # 翌月 燃料費調整単価 (bottom=739.5) — 原本に合わせ円・銭を分割描画 (円x1=490.32, 銭x0=491.04)
     B5 = 739.5
     _tsb(c, 371.9, B5, '燃料費調整単価（税込）', 6.84)
-    _tsb(c, 476.5, B5, d['next_fuel_adj_unit_str'], 6.84)
+    _tsb(c, 490.32, B5, str(d['next_fuel_adj_unit_yen']).translate(_FWD) + '円', 6.84, align='right')
+    _tsb(c, 491.04, B5, f'{d["next_fuel_adj_unit_sen"]:02d}'.translate(_FWD) + '銭／ｋＷｈ', 6.84)
 
 
 # ══════════════════════════════════════════════════════════════
@@ -514,6 +535,100 @@ def _check_password() -> bool:
 
 
 # ══════════════════════════════════════════════════════════════
+# 自動計算ヘルパー（料金定数・日程計算・ランダム生成）
+# ══════════════════════════════════════════════════════════════
+
+def _fw_date(d_: date) -> str:
+    """date → 'M月D日'（全角数字）"""
+    return str(d_.month).translate(_FWD) + '月' + str(d_.day).translate(_FWD) + '日'
+
+# ── 料金定数（中部電力ミライズ 従量電灯B 30A 2026年度）─────────
+_BASIC_YEN,  _BASIC_SEN  = 963, 42   # 基本料金（税込）
+_ENERGY_RATE1 = 21.20   # 第1段階税込単価（〜120kWh）  ← 原本実績から逆算
+_ENERGY_RATE2 = 28.19   # 第2段階税込単価（121〜300kWh）
+_ENERGY_RATE3 = 32.62   # 第3段階税込単価（300kWh超）
+_RENEW_YEN,  _RENEW_SEN  = 4, 18    # 再エネ賦課金単価（税込）2026年度
+
+# 燃料費調整単価テーブル（低圧 税込 円/kWh）— 中部電力ミライズ公式値
+# 出典: https://miraiz.chuden.co.jp/home/electric/contract/fuelcost_transition/
+_FUEL_ADJ_TABLE = {
+    (2026,  7): (1, 49),  (2026,  6): (1, 35),  (2026,  5): (1, 26),
+    (2025,  7): (1, 98),  (2025,  6): (2, 63),  (2025,  5): (2, 84),
+    (2025,  4): (1, 64),  (2025,  1): (0, 79),
+    (2025, 12): (0, 86),  (2025, 11): (0, 93),
+    (2024, 12): (2, 59),  (2024,  1): (2, 33),
+}
+
+def _get_fuel_adj(year: int, month: int):
+    """月別燃料費調整単価（公式テーブルにない月は最新既知値）"""
+    return _FUEL_ADJ_TABLE.get((year, month), (1, 49))
+
+def _adj_inspection(dt: date) -> date:
+    """土曜 → 翌月曜(+2)、日曜 → 翌月曜(+1)"""
+    if dt.weekday() == 5: return dt + timedelta(days=2)
+    if dt.weekday() == 6: return dt + timedelta(days=1)
+    return dt
+
+def _inspection_date(year: int, month: int, sched: int) -> date:
+    """日程番号から検針日を算出（月末超えは月末にclamp）"""
+    last = _cal.monthrange(year, month)[1]
+    return _adj_inspection(date(year, month, min(sched, last)))
+
+def _gen_usage_kwh(rng, billing_month: int, usage_days: int) -> int:
+    """季節・使用日数に応じたご使用量をランダム生成"""
+    # 成人男性 or 女性をランダム選択
+    daily = rng.uniform(5.5, 10.5) if rng.random() < 0.5 else rng.uniform(4.5, 8.5)
+    # 季節係数（billing_month ≒ 検針月 = 使用期間の後半が属する月）
+    factors = {
+        1: 1.30, 2: 1.25, 3: 1.05, 4: 0.88, 5: 0.85,
+        6: 0.92, 7: 1.22, 8: 1.38, 9: 1.12, 10: 0.90,
+        11: 1.05, 12: 1.25,
+    }
+    return max(30, min(600, round(daily * factors.get(billing_month, 1.0) * usage_days)))
+
+def _calc_billing(usage_kwh: int, fuel_yen: int, fuel_sen: int) -> dict:
+    """ご請求額の内訳を計算して返す"""
+    fu = fuel_yen + fuel_sen / 100   # 燃料費調整単価 (円/kWh)
+    # 電力量料金ベース（燃料費調整前）
+    if usage_kwh <= 120:
+        base = usage_kwh * _ENERGY_RATE1
+    elif usage_kwh <= 300:
+        base = 120 * _ENERGY_RATE1 + (usage_kwh - 120) * _ENERGY_RATE2
+    else:
+        base = 120 * _ENERGY_RATE1 + 180 * _ENERGY_RATE2 + (usage_kwh - 300) * _ENERGY_RATE3
+    # うち燃料費調整額
+    fuel_total = usage_kwh * fu
+    # 電力量料金合計（燃料費調整込み）
+    energy = base + fuel_total
+    ey = int(energy)
+    es = round((energy - ey) * 100)
+    if es >= 100: ey += 1; es -= 100
+    fy = int(fuel_total)
+    fs = round((fuel_total - fy) * 100)
+    if fs >= 100: fy += 1; fs -= 100
+    # 再エネ賦課金（銭以下切り捨て）
+    ry = int(usage_kwh * (_RENEW_YEN + _RENEW_SEN / 100))
+    # 合計・税（円以下切り捨て）
+    total = int((_BASIC_YEN + _BASIC_SEN / 100) + energy + ry)
+    tax   = int(total * 10 / 110)
+    return dict(
+        billing_amount=total, tax_amount=tax,
+        basic_yen=_BASIC_YEN, basic_sen=_BASIC_SEN,
+        energy1_yen=ey, energy1_sen=es,
+        fuel_adj_yen=fy, fuel_adj_sen=fs,
+        renewable_yen=ry,
+        fuel_adj_unit_yen=fuel_yen, fuel_adj_unit_sen=fuel_sen,
+        renewable_unit_yen=_RENEW_YEN, renewable_unit_sen=_RENEW_SEN,
+    )
+
+def _gen_supply_point_id(cno: str) -> str:
+    """供給地点特定番号を生成（半角22桁）: '040' + お客さま番号13桁 + '000000'"""
+    h = cno.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+    digits = ''.join(c for c in h if c.isdigit())
+    return '040' + digits.zfill(13)[:13] + '000000'
+
+
+# ══════════════════════════════════════════════════════════════
 # Streamlit UI
 # ══════════════════════════════════════════════════════════════
 st.set_page_config(page_title=APP_TITLE, layout='centered')
@@ -525,139 +640,31 @@ if not _check_password():
     st.stop()
 
 today = date.today()
+_fw_tr = str.maketrans('0123456789', '０１２３４５６７８９')
 
-# ── ① 基本情報 ─────────────────────────────────────────────
+# ── ① 基本情報 ──────────────────────────────────────────────
 st.subheader('① 基本情報')
 col1, col2 = st.columns([1, 1])
 with col1:
     name = st.text_input('おなまえ', value='前田　篤志',
                          help='姓と名の間に全角スペースを入れてください')
-    customer_no = st.text_input('お客さま番号', value='１１０３９７３０２００５０',
-                                help='全角数字で入力')
+    customer_no = st.text_input('お客さま番号（13桁）', value='１１０３９７３０２００５０',
+                                help='全角数字13桁（3+4+2+2+1+1 の形式）')
 with col2:
-    contract_type = st.selectbox('契約種別',
-        ['従量電灯Ｂ', '従量電灯Ｃ', '低圧電力', 'スマートライフプラン', 'その他'],
-        index=0)
-    contract_capacity = st.text_input('契約容量（Ａ）', value='３０')
-
-col3, col4 = st.columns([1, 1])
-with col3:
-    meter_no = st.text_input('計器番号', value='０４６')
-    schedule = st.text_input('日程', value='０８', help='検針スケジュール番号')
-with col4:
-    power_factor = st.text_input('力率', value='', help='低圧電力等の場合に記入（任意）')
-    supply_point_id = st.text_input('供給地点特定番号',
-                                    value='０４０１１０３９７３０２００５０００００００')
+    target_ym = st.date_input('年月（月初日で指定）',
+                              value=date(today.year, today.month, 1))
+    schedule = st.selectbox(
+        '日程（検針スケジュール番号）',
+        [f'{i:02d}' for i in range(1, 20)],
+        index=7,   # デフォルト: 08
+        help='01〜19 から選択。検針日・使用期間・使用日数を自動計算します。',
+    )
 
 st.markdown('---')
 
-# ── ② 日程・期間 ──────────────────────────────────────────
-st.subheader('② 日程・期間')
-col5, col6 = st.columns([1, 1])
-with col5:
-    issue_date  = st.date_input('発行日', value=today)
-    target_ym   = st.date_input('対象年月（月初日で指定）',
-                                value=date(today.year, today.month, 1))
-with col6:
-    meter_read_date = st.date_input('検針日（当月）', value=today)
-    usage_start = st.date_input('ご使用期間 開始', value=today - timedelta(days=32))
-    usage_end   = st.date_input('ご使用期間 終了', value=today - timedelta(days=1))
+# ── ② ご使用場所 ─────────────────────────────────────────
+st.subheader('② ご使用場所')
 
-usage_days_calc = (usage_end - usage_start).days + 1 if usage_end >= usage_start else 0
-st.caption(f'📅 ご使用日数（自動計算）: **{usage_days_calc}日**')
-usage_days_override = st.number_input('ご使用日数（手動修正する場合のみ）',
-    min_value=0, max_value=99, value=0, step=1,
-    help='0のままにすると自動計算値を使用')
-usage_days = int(usage_days_override) if usage_days_override > 0 else usage_days_calc
-
-def _fw_date(d_: date) -> str:
-    tr = str.maketrans('0123456789', '０１２３４５６７８９')
-    return str(d_.month).translate(tr) + '月' + str(d_.day).translate(tr) + '日'
-
-usage_period_str = f'{_fw_date(usage_start)}〜{_fw_date(usage_end)}'
-issue_date_str   = str(issue_date.year).translate(str.maketrans('0123456789','０１２３４５６７８９')) \
-                   + '年' + _fw_date(issue_date)
-
-st.markdown('---')
-
-# ── ③ 翌月ご案内 ─────────────────────────────────────────
-st.subheader('③ 翌月ご案内')
-col7, col8 = st.columns([1, 1])
-with col7:
-    next_meter_read_date = st.date_input('翌月 検針日',
-                                         value=meter_read_date + timedelta(days=28))
-    next_usage_start = st.date_input('翌月 使用期間 開始',
-                                     value=usage_end + timedelta(days=1))
-with col8:
-    next_usage_end   = st.date_input('翌月 使用期間 終了',
-                                     value=usage_end + timedelta(days=28))
-    next_month_label = st.text_input('翌月ご案内の月（全角数字）',
-                                     value=str(target_ym.month % 12 + 1).translate(
-                                         str.maketrans('0123456789','０１２３４５６７８９')))
-
-next_usage_period_str = f'{_fw_date(next_usage_start)}〜{_fw_date(next_usage_end)}'
-st.markdown('---')
-
-# ── ④ 使用量・計器指示数 ─────────────────────────────────
-st.subheader('④ 使用量・計器指示数')
-col9, col10 = st.columns([1, 1])
-with col9:
-    usage_kwh       = st.number_input('ご使用量（ｋＷｈ）', min_value=0, value=92, step=1)
-    current_reading = st.number_input('当月指示数', min_value=0.0, value=19398.6,
-                                      step=0.1, format='%.1f')
-with col10:
-    prev_reading_auto = round(current_reading - usage_kwh, 1)
-    st.caption(f'📟 前月指示数（自動計算）: **{prev_reading_auto}**')
-    prev_reading = st.number_input('前月指示数（手動修正する場合のみ）',
-                                   min_value=0.0, value=0.0, step=0.1, format='%.1f',
-                                   help='0.0のままにすると自動計算値を使用')
-    prev_reading_final = prev_reading if prev_reading > 0 else prev_reading_auto
-    diff_reading = round(current_reading - prev_reading_final, 1)
-
-st.markdown('---')
-
-# ── ⑤ 請求金額 ───────────────────────────────────────────
-st.subheader('⑤ 請求金額')
-col11, col12 = st.columns([1, 1])
-with col11:
-    billing_amount = st.number_input('ご請求額（円）',          min_value=0, value=3413, step=1)
-    tax_amount     = st.number_input('うち消費税等相当額（円）', min_value=0, value=310,  step=1)
-with col12:
-    basic_yen = st.number_input('基本料金（円）', min_value=0, value=963,  step=1)
-    basic_sen = st.number_input('基本料金（銭）', min_value=0, max_value=99, value=42, step=1)
-
-col13, col14 = st.columns([1, 1])
-with col13:
-    energy1_yen = st.number_input('電力量料金 1段（円）', min_value=0, value=2066, step=1)
-    energy1_sen = st.number_input('電力量料金 1段（銭）', min_value=0, max_value=99, value=32, step=1)
-with col14:
-    fuel_adj_yen = st.number_input('うち燃料費調整額（円）', min_value=0, value=115, step=1)
-    fuel_adj_sen = st.number_input('うち燃料費調整額（銭）', min_value=0, max_value=99, value=92, step=1)
-
-col15, _ = st.columns([1, 1])
-with col15:
-    renewable_yen = st.number_input('再エネ発電促進賦課金（円）', min_value=0, value=384, step=1)
-
-st.markdown('---')
-
-# ── ⑥ 単価情報 ──────────────────────────────────────────
-st.subheader('⑥ 単価情報')
-col17, col18 = st.columns([1, 1])
-with col17:
-    fuel_adj_unit_yen = st.number_input('当月 燃料費調整単価（円）', min_value=0, value=1, step=1)
-    fuel_adj_unit_sen = st.number_input('当月 燃料費調整単価（銭）', min_value=0, max_value=99, value=26, step=1)
-    renewable_unit_yen = st.number_input('再エネ単価（円）', min_value=0, value=4, step=1)
-    renewable_unit_sen = st.number_input('再エネ単価（銭）', min_value=0, max_value=99, value=18, step=1)
-with col18:
-    next_fuel_adj_yen = st.number_input('翌月 燃料費調整単価（円）', min_value=0, value=1, step=1)
-    next_fuel_adj_sen = st.number_input('翌月 燃料費調整単価（銭）', min_value=0, max_value=99, value=35, step=1)
-
-st.markdown('---')
-
-# ── ⑦ ご使用場所 ─────────────────────────────────────────
-st.subheader('⑦ ご使用場所')
-
-# address1 の初期値（未設定時のみ）
 if '_meisai_addr1' not in st.session_state:
     st.session_state['_meisai_addr1'] = '愛知県　名古屋市　熱田区　一番　３丁目　２－３０'
 
@@ -666,8 +673,7 @@ postal_raw = st.text_input(
     placeholder='例: 460-0008 または ４６０－０００８',
     help='7桁入力すると住所①を自動補完します。半角・全角どちらでも可。',
 )
-# 半角数字のみ抽出して7桁チェック
-_zip_half = postal_raw.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
+_zip_half   = postal_raw.translate(str.maketrans('０１２３４５６７８９', '0123456789'))
 _zip_digits = ''.join(c for c in _zip_half if c.isdigit())
 if len(_zip_digits) == 7 and st.session_state.get('_meisai_last_zip') != _zip_digits:
     _z1, _z2, _z3 = _lookup_address_by_zip(_zip_digits)
@@ -687,56 +693,96 @@ address2 = st.text_input('住所②（建物名・部屋番号、任意）',
 
 st.markdown('---')
 
-# ── ⑧ 生成 ───────────────────────────────────────────────
-_fw_tr = str.maketrans('0123456789', '０１２３４５６７８９')
+# ══════════════════════════════════════════════════════════════
+# 自動計算（日程 → 日付 → 使用量 → 請求額）
+# ══════════════════════════════════════════════════════════════
+sched_num = int(schedule)
+b_year, b_month = target_ym.year, target_ym.month
+p_year, p_month = (b_year - 1, 12) if b_month == 1  else (b_year, b_month - 1)
+n_year, n_month = (b_year + 1,  1) if b_month == 12 else (b_year, b_month + 1)
 
-# 翌月単価: "１円３５銭／ｋＷｈ" (スペースなし)
-next_fuel_adj_unit_str = (str(next_fuel_adj_yen).translate(_fw_tr) + '円'
-                          + f'{next_fuel_adj_sen:02d}'.translate(_fw_tr) + '銭／ｋＷｈ')
+cur_insp  = _inspection_date(b_year, b_month, sched_num)
+prev_insp = _inspection_date(p_year, p_month, sched_num)
+next_insp = _inspection_date(n_year, n_month, sched_num)
 
+usage_start      = prev_insp
+usage_end        = cur_insp - timedelta(1)
+usage_days       = (cur_insp - prev_insp).days
+next_usage_start = cur_insp
+next_usage_end   = next_insp - timedelta(1)
+
+# 自動計算プレビューを表示
+st.info(
+    f'📅 **自動計算プレビュー**　　'
+    f'検針日: **{_fw_date(cur_insp)}**　／　'
+    f'ご使用期間: **{_fw_date(usage_start)}〜{_fw_date(usage_end)}**　／　'
+    f'ご使用日数: **{usage_days}日**'
+)
+
+# 乱数キャッシュ（年月・日程が変わった時だけ再生成、おなまえや住所変更では変えない）
+_cache_key = f'{b_year}_{b_month}_{sched_num}'
+if st.session_state.get('_cache_key') != _cache_key:
+    _rng = _rand.Random(hash(_cache_key))
+    st.session_state['_cache_key']    = _cache_key
+    st.session_state['_usage_kwh']    = _gen_usage_kwh(_rng, b_month, usage_days)
+    st.session_state['_prev_reading'] = round(_rng.uniform(5000, 25000), 1)
+    st.session_state['_meter_no']     = str(_rng.randint(0, 999)).zfill(3)
+
+usage_kwh_n = st.session_state['_usage_kwh']
+prev_rdg    = st.session_state['_prev_reading']
+cur_rdg     = round(prev_rdg + usage_kwh_n, 1)
+meter_no_n  = st.session_state['_meter_no']
+
+# 燃料費調整単価（公式テーブル参照）
+fuel_yen, fuel_sen = _get_fuel_adj(b_year, b_month)
+nf_yen,   nf_sen   = _get_fuel_adj(n_year, n_month)
+
+# 請求額計算
+billing = _calc_billing(usage_kwh_n, fuel_yen, fuel_sen)
+
+# 翌月 燃料費調整単価 文字列
+nf_str = (str(nf_yen).translate(_fw_tr) + '円'
+          + f'{nf_sen:02d}'.translate(_fw_tr) + '銭／ｋＷｈ')
+
+# 発行日 = 今日
+issue_date_str = str(today.year).translate(_fw_tr) + '年' + _fw_date(today)
+
+# 供給地点特定番号（半角生成 → 全角変換）
+sp_id = _gen_supply_point_id(customer_no).translate(_FWD)
+
+# ── データ辞書 ────────────────────────────────────────────────
 data = dict(
     name              = name.strip(),
     customer_no       = customer_no.strip(),
-    schedule          = schedule.strip(),
-    contract_type     = contract_type,
-    contract_capacity = contract_capacity.strip(),
-    power_factor      = power_factor.strip(),
-    meter_no          = meter_no.strip(),
-    supply_point_id   = supply_point_id.strip(),
+    schedule          = schedule.translate(_FWD),    # '08' → '０８'
+    contract_type     = '従量電灯Ｂ',
+    contract_capacity = '３０',
+    power_factor      = '',                          # 常に空欄
+    meter_no          = meter_no_n.translate(_FWD),  # '046' → '０４６'
+    supply_point_id   = sp_id,
 
     issue_date_str    = issue_date_str,
-    target_year       = str(target_ym.year).translate(_fw_tr),
-    target_month      = str(target_ym.month).translate(_fw_tr),
-    meter_read_date   = _fw_date(meter_read_date),
+    target_year       = str(b_year).translate(_fw_tr),
+    target_month      = str(b_month).translate(_fw_tr),
+    meter_read_date   = _fw_date(cur_insp),
 
-    usage_period      = usage_period_str,
+    usage_period      = f'{_fw_date(usage_start)}〜{_fw_date(usage_end)}',
     usage_days        = str(usage_days).translate(_fw_tr),
-    usage_kwh         = str(usage_kwh).translate(_fw_tr),
+    usage_kwh         = str(usage_kwh_n).translate(_fw_tr),
 
-    current_reading   = f'{current_reading:.1f}',
-    prev_reading      = f'{prev_reading_final:.1f}',
-    diff_reading      = f'{diff_reading:.1f}',
+    current_reading   = f'{cur_rdg:.1f}',
+    prev_reading      = f'{prev_rdg:.1f}',
+    diff_reading      = f'{usage_kwh_n}.0',
 
-    billing_amount    = billing_amount,
-    tax_amount        = tax_amount,
+    # 請求額内訳（自動計算）
+    **billing,
 
-    basic_yen         = basic_yen,
-    basic_sen         = basic_sen,
-    energy1_yen       = energy1_yen,
-    energy1_sen       = energy1_sen,
-    fuel_adj_yen      = fuel_adj_yen,
-    fuel_adj_sen      = fuel_adj_sen,
-    renewable_yen     = renewable_yen,
-
-    fuel_adj_unit_yen = fuel_adj_unit_yen,
-    fuel_adj_unit_sen = fuel_adj_unit_sen,
-    renewable_unit_yen= renewable_unit_yen,
-    renewable_unit_sen= renewable_unit_sen,
-
-    next_month_label        = next_month_label.strip(),
-    next_meter_read_date    = _fw_date(next_meter_read_date),
-    next_usage_period       = next_usage_period_str,
-    next_fuel_adj_unit_str  = next_fuel_adj_unit_str,
+    next_month_label       = str(n_month).translate(_fw_tr),
+    next_meter_read_date   = _fw_date(next_insp),
+    next_usage_period      = f'{_fw_date(next_usage_start)}〜{_fw_date(next_usage_end)}',
+    next_fuel_adj_unit_str = nf_str,
+    next_fuel_adj_unit_yen = nf_yen,
+    next_fuel_adj_unit_sen = nf_sen,
 
     # U+2212（数学マイナス）→ U+FF0D（全角ハイフン）に正規化（MS Mincho での半角化を防止）
     address1 = address1.strip().replace('−', '－'),
@@ -748,7 +794,7 @@ if st.button('⚡　電気ご使用量のお知らせ PDF を生成する',
     with st.spinner('PDF を生成中…'):
         pdf_bytes = generate_pdf(data)
 
-    fname = f'Webmeisai{target_ym.year}{target_ym.month:02d}.pdf'
+    fname = f'Webmeisai{b_year}{b_month:02d}.pdf'
     st.download_button(
         label='📄　PDF をダウンロード',
         data=pdf_bytes,
@@ -756,6 +802,6 @@ if st.button('⚡　電気ご使用量のお知らせ PDF を生成する',
         mime='application/pdf',
         use_container_width=True,
     )
-    yr_fw = str(target_ym.year).translate(_fw_tr)
-    mo_fw = str(target_ym.month).translate(_fw_tr)
+    yr_fw = str(b_year).translate(_fw_tr)
+    mo_fw = str(b_month).translate(_fw_tr)
     st.success(f'✅ {yr_fw}年{mo_fw}月分の明細書を生成しました。')
