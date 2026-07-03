@@ -648,7 +648,7 @@ col1, col2 = st.columns([1, 1])
 with col1:
     name = st.text_input('おなまえ', value='田中　太郎',
                          help='姓と名の間に全角スペースを入れてください')
-    customer_no = st.text_input('お客さま番号（13桁）', value='０００００１２３４５６７８',
+    customer_no = st.text_input('お客さま番号（13桁）', value='１１０３９７３０２００５０',
                                 help='全角数字13桁（3+4+2+2+1+1 の形式）')
 with col2:
     target_ym = st.date_input('年月（月初日で指定）',
