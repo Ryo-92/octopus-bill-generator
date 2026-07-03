@@ -659,7 +659,7 @@ col1, col2 = st.columns([1, 1])
 with col1:
     name = st.text_input('おなまえ', value='田中　太郎',
                          help='姓と名の間に全角スペースを入れてください')
-    _cn_col, _cn_btn_col = st.columns([5, 1])
+    _cn_col, _cn_btn_col = st.columns([4, 1], vertical_alignment='bottom')
     with _cn_col:
         customer_no = st.text_input(
             'お客さま番号（13桁）',
@@ -667,7 +667,6 @@ with col1:
             help='全角数字13桁（3+4+2+2+1+1 の形式）',
         )
     with _cn_btn_col:
-        st.write('')  # ラベル分のスペース調整
         st.button('変更', key='_rnd_cn_btn', type='primary',
                   on_click=_randomize_customer_no)
 with col2:
