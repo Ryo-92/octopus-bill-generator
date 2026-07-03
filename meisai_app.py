@@ -642,14 +642,31 @@ if not _check_password():
 today = date.today()
 _fw_tr = str.maketrans('0123456789', '０１２３４５６７８９')
 
+# お客さま番号のセッション状態初期化
+if '_customer_no' not in st.session_state:
+    st.session_state['_customer_no'] = '１１０３９７３０２００５０'
+
 # ── ① 基本情報 ──────────────────────────────────────────────
 st.subheader('① 基本情報')
 col1, col2 = st.columns([1, 1])
 with col1:
     name = st.text_input('おなまえ', value='田中　太郎',
                          help='姓と名の間に全角スペースを入れてください')
-    customer_no = st.text_input('お客さま番号（13桁）', value='１１０３９７３０２００５０',
-                                help='全角数字13桁（3+4+2+2+1+1 の形式）')
+    _cn_col, _cn_btn_col = st.columns([5, 1])
+    with _cn_col:
+        customer_no = st.text_input(
+            'お客さま番号（13桁）',
+            key='_customer_no',
+            help='全角数字13桁（3+4+2+2+1+1 の形式）',
+        )
+    with _cn_btn_col:
+        st.write('')  # ラベル分のスペース調整
+        if st.button('変更', key='_rnd_cn_btn', use_container_width=True, type='primary'):
+            _FW_TR2 = str.maketrans('0123456789', '０１２３４５６７８９')
+            st.session_state['_customer_no'] = ''.join(
+                str(_rand.randint(0, 9)) for _ in range(13)
+            ).translate(_FW_TR2)
+            st.rerun()
 with col2:
     target_ym = st.date_input('年月（月初日で指定）',
                               value=date(today.year, today.month, 1))
