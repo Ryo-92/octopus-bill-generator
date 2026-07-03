@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import html as html_module
+import json as _json
 import urllib.request
 import streamlit as st
 from datetime import date
@@ -161,6 +162,26 @@ def get_subsidy_info(usage_year: int, usage_month: int) -> tuple[float, str, str
     return 0.0, "unknown", status
 
 
+# ── 郵便番号 → 住所補完ユーティリティ ────────────────────────────
+@st.cache_data(ttl=3600, show_spinner=False)
+def _lookup_address_by_zip(zip7: str) -> tuple:
+    """
+    郵便番号（7桁数字文字列）から住所を取得する。zipcloud API を使用。
+    Returns: (都道府県, 市区町村, 町名)  失敗時は ("", "", "")
+    """
+    url = f"https://zipcloud.ibsnet.co.jp/api/search?zipcode={zip7}"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        if data.get("results"):
+            r = data["results"][0]
+            return (r.get("address1", ""), r.get("address2", ""), r.get("address3", ""))
+    except Exception:
+        pass
+    return ("", "", "")
+
+
 # ── メイン画面 ─────────────────────────────────────────────────
 st.title("⚡ " + APP_TITLE)
 st.caption("チーム内専用ツール")
@@ -169,22 +190,45 @@ st.markdown("---")
 # ── ① 顧客情報 ────────────────────────────────────────────────
 st.subheader("① 顧客情報の入力")
 
+# 住所セッション初期化
+if "_oct_address" not in st.session_state:
+    st.session_state["_oct_address"] = ""
+
 col1, col2 = st.columns([2, 1])
 with col1:
     name = st.text_input("氏名（フルネーム）", placeholder="例：山田 太郎", value="")
 with col2:
-    postal = st.text_input(
+    postal_raw = st.text_input(
         "郵便番号",
         placeholder="例：150-0001",
         value="",
-        help="半角数字で入力してください",
+        help="7桁入力すると住所を自動補完します。全角・ハイフンありでも対応",
     )
+
+# 全角数字・全角ハイフンを半角に変換
+_zip_half   = postal_raw.translate(str.maketrans("０１２３４５６７８９－‐−", "0123456789---"))
+_zip_digits = "".join(c for c in _zip_half if c.isdigit())
+
+# 7桁揃ったら住所自動補完
+if len(_zip_digits) == 7 and st.session_state.get("_oct_last_zip") != _zip_digits:
+    _z1, _z2, _z3 = _lookup_address_by_zip(_zip_digits)
+    if _z1:
+        st.session_state["_oct_address"] = _z1 + _z2 + _z3
+        st.session_state["_oct_last_zip"] = _zip_digits
+        st.rerun()
+
+# 郵便番号を XXX-XXXX 形式に正規化（PDF 生成用）
+if len(_zip_digits) == 7:
+    postal = f"{_zip_digits[:3]}-{_zip_digits[3:]}"
+else:
+    # 7桁取れない場合はそのまま（バリデーションで弾く）
+    postal = _zip_half.strip()
 
 address = st.text_input(
     "住所（都道府県〜部屋番号まで）",
+    key="_oct_address",
     placeholder="例：東京都渋谷区神宮前1-2-3 サンプルマンション301",
-    value="",
-    help="半角数字で入力してください",
+    help="郵便番号を入力すると都道府県・市区町村・町名が自動補完されます。番地・建物名は手動で追記してください。",
 )
 
 st.markdown("---")
@@ -251,7 +295,7 @@ elif subsidy_source == "web":
 else:
     st.warning(f"⚠️ {subsidy_status}")
 
-# 単価入力（発行日変更で請求月が変わった場合にリセットされるよう key に月を含、る）
+# 単価入力（発行日変更で請求月が変わった場合にリセットされるよう key に月を含める）
 discount_rate_input = st.number_input(
     "補助単価（円/kWh）　※手動で修正できます",
     min_value=0.0,
@@ -300,8 +344,8 @@ if generate_clicked:
     errors = []
     if not name.strip():
         errors.append("氏名を入力してください。")
-    if not postal.strip():
-        errors.append("郵便番号を入力してください。")
+    if len(_zip_digits) != 7:
+        errors.append("郵便番号は7桁の数字で入力してください（例：150-0001）。")
     if not address.strip():
         errors.append("住所を入力してください。")
 
@@ -375,7 +419,7 @@ if generate_clicked:
                             modify_form=False,
                             modify_other=False,
                             modify_assembly=False,
-                       ),
+                        ),
                     ),
                 )
             os.unlink(tmp_path)
@@ -384,7 +428,7 @@ if generate_clicked:
                 pdf_bytes = f.read()
             os.unlink(clean_path)
 
-        # 結果を session_state に��存（発行日変更官もダウンロードできるよう）
+        # 結果を session_state に保存（発行日変更後もダウンロードできるよう）
         st.session_state["result"] = dict(
             pdf_bytes=pdf_bytes,
             bill=bill,
@@ -400,7 +444,7 @@ if generate_clicked:
         )
 
 
-# ── 結果誎碑 ──────────────────────────────────────────────────
+# ── 結果表示 ──────────────────────────────────────────────────
 result = st.session_state.get("result")
 if result:
     bill = result["bill"]
