@@ -286,7 +286,11 @@ st.info(
 st.markdown("---")
 
 # ── ③ 政府補助金（激変緩和措置）────────────────────────────────
-st.subheader("③ 政府補助金（激変緩和措置）")
+_col_hd3, _col_note3 = st.columns([3, 2])
+with _col_hd3:
+    st.subheader("③ 政府補助金（激変緩和措置）")
+with _col_note3:
+    st.caption("※数字はすべて半角に変換されます", unsafe_allow_html=False)
 
 # 未登録月の場合はスピナーを表示しながら取得
 if (prev_year, prev_month) not in _DISCOUNT_RATES:
@@ -303,17 +307,22 @@ elif subsidy_source == "web":
 else:
     st.warning(f"⚠️ {subsidy_status}")
 
-# 単価入力（発行日変更で請求月が変わった場合にリセットされるよう key に月を含める）
-discount_rate_input = st.number_input(
+# 単価入力（全角数字・全角ドット対応 / 発行日変更で請求月が変わった場合にリセット）
+_SUBSIDY_TRANS = str.maketrans("０１２３４５６７８９．", "0123456789.")
+_discount_raw = st.text_input(
     "補助単価（円/kWh）　※手動で修正できます",
-    min_value=0.0,
-    max_value=20.0,
-    value=float(subsidy_rate),
-    step=0.1,
-    format="%.1f",
+    value=f"{subsidy_rate:.1f}",
     key=f"disc_rate_{billing_year}_{billing_month}",
-    help="政府の激変緩和措置による値引き単価（0.0 = 補助なし）",
+    help="政府の激変緩和措置による値引き単価（0.0 = 補助なし）。全角数字でも入力できます。",
 )
+_discount_half = _discount_raw.translate(_SUBSIDY_TRANS).strip()
+try:
+    discount_rate_input = float(_discount_half)
+    discount_rate_input = max(0.0, min(20.0, discount_rate_input))
+except ValueError:
+    discount_rate_input = float(subsidy_rate)
+    if _discount_half:
+        st.caption("⚠️ 数値を入力してください（例: 3.5）")
 
 # 使用量プレビュー（補助金額を即時表示）
 preview_kwh = get_seasonal_kwh(billing_month)
