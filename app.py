@@ -188,7 +188,11 @@ st.caption("チーム内専用ツール")
 st.markdown("---")
 
 # ── ① 顧客情報 ────────────────────────────────────────────────
-st.subheader("① 顧客情報の入力")
+_col_hd, _col_note = st.columns([3, 2])
+with _col_hd:
+    st.subheader("① 顧客情報の入力")
+with _col_note:
+    st.caption("※数字はすべて半角に変換されます", unsafe_allow_html=False)
 
 # 住所セッション初期化
 if "_oct_address" not in st.session_state:
@@ -230,6 +234,10 @@ address = st.text_input(
     placeholder="例：東京都渋谷区神宮前1-2-3 サンプルマンション301",
     help="郵便番号を入力すると都道府県・市区町村・町名が自動補完されます。番地・建物名は手動で追記してください。",
 )
+
+# 住所中の全角数字を半角に変換（PDF生成前に正規化）
+_ADDR_TRANS = str.maketrans("０１２３４５６７８９", "0123456789")
+address_for_pdf = address.translate(_ADDR_TRANS)
 
 st.markdown("---")
 
@@ -384,7 +392,7 @@ if generate_clicked:
             ])
 
             data = dict(
-                name=name.strip(), postal=postal.strip(), address=address.strip(),
+                name=name.strip(), postal=postal.strip(), address=address_for_pdf.strip(),
                 contract=contract, invoice=invoice,
                 issue_date=issue_date,
                 period_start=period_start, period_end=period_end,
