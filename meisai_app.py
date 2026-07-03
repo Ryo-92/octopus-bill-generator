@@ -668,7 +668,7 @@ with col1:
         )
     with _cn_btn_col:
         st.write('')  # ラベル分のスペース調整
-        st.button('変更', key='_rnd_cn_btn', use_container_width=True, type='primary',
+        st.button('変更', key='_rnd_cn_btn', type='primary',
                   on_click=_randomize_customer_no)
 with col2:
     target_ym = st.date_input('年月（月初日で指定）',
