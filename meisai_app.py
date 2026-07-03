@@ -646,9 +646,9 @@ _fw_tr = str.maketrans('0123456789', '０１２３４５６７８９')
 st.subheader('① 基本情報')
 col1, col2 = st.columns([1, 1])
 with col1:
-    name = st.text_input('おなまえ', value='前田　篤志',
+    name = st.text_input('おなまえ', value='田中　太郎',
                          help='姓と名の間に全角スペースを入れてください')
-    customer_no = st.text_input('お客さま番号（13桁）', value='１１０３９７３０２００５０',
+    customer_no = st.text_input('お客さま番号（13桁）', value='０００００１２３４５６７８',
                                 help='全角数字13桁（3+4+2+2+1+1 の形式）')
 with col2:
     target_ym = st.date_input('年月（月初日で指定）',
@@ -666,7 +666,7 @@ st.markdown('---')
 st.subheader('② ご使用場所')
 
 if '_meisai_addr1' not in st.session_state:
-    st.session_state['_meisai_addr1'] = '愛知県　名古屋市　熱田区　一番　３丁目　２－３０'
+    st.session_state['_meisai_addr1'] = '東京都　千代田区　千代田　１丁目　１－１'
 
 postal_raw = st.text_input(
     '郵便番号',
@@ -685,11 +685,11 @@ if len(_zip_digits) == 7 and st.session_state.get('_meisai_last_zip') != _zip_di
 address1 = st.text_input(
     '住所①（都道府県～番地）',
     key='_meisai_addr1',
-    placeholder='例: 愛知県　名古屋市　熱田区　一番　３丁目　２－３０',
+    placeholder='例: 東京都　千代田区　千代田　１丁目　１－１',
     help='郵便番号を入力すると都道府県・市区町村・町名が自動補完されます。番地は手動で追記してください。',
 )
 address2 = st.text_input('住所②（建物名・部屋番号、任意）',
-    value='市営　一番荘　３棟　２０５')
+    value='', placeholder='例: ○○マンション　１０１号室')
 
 st.markdown('---')
 
